@@ -1048,6 +1048,7 @@ func (h *BaseAPIHandler) streamWithPluginExecutor(ctx context.Context, entryProt
 		}, execOptions.SkipInterceptorPluginID)
 		applyStreamHeaders(intercepted.Headers)
 	}
+	responseHeaders := cloneHeader(upstreamHeaders)
 
 	dataChan := make(chan []byte)
 	errChan := make(chan *interfaces.ErrorMessage, 1)
@@ -1130,7 +1131,7 @@ func (h *BaseAPIHandler) streamWithPluginExecutor(ctx context.Context, entryProt
 			}
 		}
 	}()
-	return dataChan, upstreamHeaders, errChan
+	return dataChan, responseHeaders, errChan
 }
 
 func (h *BaseAPIHandler) executeStreamWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string, allowImageModel bool) (<-chan []byte, http.Header, <-chan *interfaces.ErrorMessage) {
@@ -1288,6 +1289,7 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		}
 	}
 	readInitialStreamChunks()
+	responseHeaders := cloneHeader(upstreamHeaders)
 
 	go func() {
 		defer close(dataChan)
@@ -1435,11 +1437,9 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 					}
 				}
 			}
-			applyStreamHeaderInit()
-			return
 		}
 	}()
-	return dataChan, upstreamHeaders, errChan
+	return dataChan, responseHeaders, errChan
 }
 
 func validateSSEDataJSON(chunk []byte) error {

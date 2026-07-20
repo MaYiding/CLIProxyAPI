@@ -680,6 +680,8 @@ func TestHandlerStreamInterceptorInitializesHeadersBeforeReturn(t *testing.T) {
 				close(initStarted)
 				<-allowInit
 				headers.Set("X-Init", "plugin")
+			} else {
+				headers.Set("X-Late", "ignored")
 			}
 			return pluginapi.StreamChunkInterceptResponse{
 				Headers: headers,
@@ -724,6 +726,9 @@ func TestHandlerStreamInterceptorInitializesHeadersBeforeReturn(t *testing.T) {
 		if msg != nil {
 			t.Fatalf("unexpected stream error: %+v", msg)
 		}
+	}
+	if got := upstreamHeaders.Get("X-Late"); got != "" {
+		t.Fatalf("late stream header = %q, want frozen response headers", got)
 	}
 }
 
@@ -794,7 +799,7 @@ func TestAppendStreamInterceptorHistoryBoundsRetainedChunks(t *testing.T) {
 	}
 }
 
-func TestHandlerStreamInterceptorKeepsReturnedHeadersStableAfterFirstPayload(t *testing.T) {
+func TestHandlerStreamInterceptorFreezesReturnedHeadersBeforeStreaming(t *testing.T) {
 	model := "handler-interceptor-stream-stable-headers-model"
 	releaseSecond := make(chan struct{})
 	executor := &interceptorCaptureExecutor{
@@ -839,8 +844,8 @@ func TestHandlerStreamInterceptorKeepsReturnedHeadersStableAfterFirstPayload(t *
 	if string(firstChunk) != "first" {
 		t.Fatalf("first chunk = %q, want first", firstChunk)
 	}
-	if upstreamHeaders.Get("X-Chunk") != "first" || upstreamHeaders.Get("X-Stage") != "init" {
-		t.Fatalf("upstream headers after first chunk = %#v, want first chunk headers", upstreamHeaders)
+	if upstreamHeaders.Get("X-Chunk") != "" || upstreamHeaders.Get("X-Stage") != "init" {
+		t.Fatalf("upstream headers after first chunk = %#v, want frozen init headers", upstreamHeaders)
 	}
 
 	close(releaseSecond)
@@ -856,8 +861,8 @@ func TestHandlerStreamInterceptorKeepsReturnedHeadersStableAfterFirstPayload(t *
 	if string(got) != "firstsecond" {
 		t.Fatalf("stream payload = %q, want firstsecond", got)
 	}
-	if upstreamHeaders.Get("X-Chunk") != "first" {
-		t.Fatalf("upstream headers changed after first payload: %#v", upstreamHeaders)
+	if upstreamHeaders.Get("X-Chunk") != "" {
+		t.Fatalf("upstream headers changed after streaming began: %#v", upstreamHeaders)
 	}
 }
 
