@@ -130,7 +130,9 @@ CLIProxyAPI 用户手册： [https://help.router-for.me/](https://help.router-fo
 
 ## 使用量统计
 
-自v6.10.0版本以后，CLIProxyAPI及 [CPAMC](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) 项目不再预置数据统计功能，如果有数据统计需求的请使用以下项目：
+CLIProxyAPI 内置了可选的追加式计费账本，可按调用方 API Key 和模型记录请求级用量，并根据自定义 Token 单价估算费用；同时提供 `/billing.html` 内置看板。详见 [API Key 内置计费](docs/billing.md)。
+
+如需完整仪表盘、长期数据库分析或账号池运维，可使用以下配套项目：
 
 ### [CPA Usage Keeper](https://github.com/Willxup/cpa-usage-keeper)
 

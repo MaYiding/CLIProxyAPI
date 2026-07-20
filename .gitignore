@@ -30,6 +30,7 @@ auths/*
 
 # Documentation
 docs/*
+!docs/billing.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md

@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232563eb'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='38' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
+  <title>Per-key Billing · CLIProxyAPI</title>
+  <style nonce="{{NONCE}}">
+    :root {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #172033;
+      background: #f3f6fb;
+      font-synthesis: none;
+      --surface: #ffffff;
+      --surface-subtle: #f7f9fc;
+      --border: #dce3ed;
+      --muted: #64748b;
+      --text: #172033;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --success: #047857;
+      --danger: #b42318;
+      --warning-bg: #fff7ed;
+      --warning-border: #fed7aa;
+      --shadow: 0 12px 36px rgba(15, 23, 42, .08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; color: var(--text); background: var(--surface-subtle); }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--accent); }
+    .hidden { display: none !important; }
+    .shell { width: min(1560px, 100%); margin: 0 auto; padding: 28px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+    .brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .logo { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; border-radius: 14px; color: #fff; font-weight: 800; background: linear-gradient(135deg, #2563eb, #14b8a6); box-shadow: var(--shadow); }
+    h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.035em; }
+    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: .9rem; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); }
+    .login-wrap { min-height: calc(100vh - 150px); display: grid; place-items: center; }
+    .login { width: min(440px, 100%); padding: 30px; }
+    .login h2 { margin: 0 0 8px; font-size: 1.4rem; }
+    .login p { margin: 0 0 22px; color: var(--muted); line-height: 1.55; }
+    label { display: grid; gap: 7px; color: #334155; font-size: .86rem; font-weight: 650; }
+    input, select { min-width: 0; width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 11px; color: var(--text); background: var(--surface); outline: none; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .14); }
+    .button { min-height: 40px; border: 1px solid transparent; border-radius: 10px; padding: 9px 14px; color: #fff; font-weight: 700; background: var(--accent); }
+    .button:hover { background: var(--accent-strong); }
+    .button.secondary { color: var(--text); background: var(--surface); border-color: var(--border); }
+    .button.secondary:hover { background: var(--surface-subtle); }
+    .button:disabled { cursor: not-allowed; opacity: .6; }
+    .login .button { width: 100%; margin-top: 16px; }
+    .status { min-height: 22px; margin-top: 12px; color: var(--muted); font-size: .88rem; }
+    .status.error { color: var(--danger); }
+    .status.success { color: var(--success); }
+    .notice { margin-bottom: 18px; padding: 14px 16px; border: 1px solid var(--warning-border); border-radius: 12px; color: #9a3412; background: var(--warning-bg); line-height: 1.45; }
+    .filters { display: grid; grid-template-columns: repeat(6, minmax(125px, 1fr)); gap: 12px; padding: 18px; margin-bottom: 18px; }
+    .filter-actions { display: flex; align-items: end; gap: 8px; }
+    .filter-actions .button { flex: 1; }
+    .cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .card { min-width: 0; padding: 17px; }
+    .card-label { color: var(--muted); font-size: .78rem; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+    .card-value { display: block; margin-top: 8px; font-size: clamp(1.2rem, 2.2vw, 1.75rem); font-weight: 780; letter-spacing: -.035em; overflow-wrap: anywhere; }
+    #metric-cost { font-size: clamp(1rem, 1.8vw, 1.5rem); white-space: nowrap; }
+    .card-meta { margin-top: 5px; color: var(--muted); font-size: .79rem; }
+    .section { margin-bottom: 18px; overflow: hidden; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 18px 13px; }
+    .section-header h2 { margin: 0; font-size: 1rem; }
+    .section-meta { color: var(--muted); font-size: .82rem; }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; }
+    th, td { padding: 11px 14px; border-top: 1px solid var(--border); text-align: left; vertical-align: top; white-space: nowrap; font-size: .83rem; }
+    th { color: var(--muted); background: var(--surface-subtle); font-size: .73rem; letter-spacing: .035em; text-transform: uppercase; }
+    td.numeric, th.numeric { text-align: right; }
+    tbody tr:hover { background: rgba(37, 99, 235, .035); }
+    .key-id { display: block; max-width: 160px; overflow: hidden; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; text-overflow: ellipsis; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; color: var(--success); background: rgba(4, 120, 87, .1); font-size: .72rem; font-weight: 700; }
+    .badge.failed { color: var(--danger); background: rgba(180, 35, 24, .1); }
+    .empty { padding: 28px; color: var(--muted); text-align: center; }
+    .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 18px 17px; border-top: 1px solid var(--border); }
+    .pagination span { color: var(--muted); font-size: .83rem; }
+    .footer { padding: 4px 0 20px; color: var(--muted); font-size: .78rem; text-align: center; }
+    @media (max-width: 1180px) {
+      .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 720px) {
+      .shell { padding: 16px; }
+      .topbar { align-items: flex-start; }
+      .top-actions { flex-direction: column; align-items: stretch; }
+      .filters { grid-template-columns: 1fr 1fr; padding: 14px; }
+      .filter-actions { grid-column: 1 / -1; }
+      .cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .card { padding: 14px; }
+    }
+    @media (max-width: 440px) {
+      .topbar { display: grid; }
+      .top-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .filters { grid-template-columns: 1fr; }
+      .filter-actions { grid-column: auto; }
+      .cards { grid-template-columns: 1fr; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --surface: #111827;
+        --surface-subtle: #0b1220;
+        --border: #263248;
+        --muted: #94a3b8;
+        --text: #e5edf8;
+        --warning-bg: #2b1b0f;
+        --warning-border: #7c3c13;
+        --shadow: 0 12px 36px rgba(0, 0, 0, .28);
+      }
+      label { color: #cbd5e1; }
+      input, select { border-color: #3a4860; }
+      .notice { color: #fdba74; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">$</div>
+        <div>
+          <h1>Per-key Billing</h1>
+          <p class="subtitle">Request, token, and cost accounting for CLIProxyAPI client keys</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <a class="button secondary" href="/management.html">Management</a>
+        <button id="logout" class="button secondary hidden" type="button">Lock</button>
+      </div>
+    </header>
+
+    <section id="login-view" class="login-wrap">
+      <form id="login-form" class="panel login">
+        <h2>Open billing dashboard</h2>
+        <p>Enter the same management key used by the management center. It stays in this tab and is never persisted.</p>
+        <label>
+          Management key
+          <input id="management-key" type="password" autocomplete="current-password" required autofocus>
+        </label>
+        <button id="login-button" class="button" type="submit">Connect</button>
+        <div id="login-status" class="status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section id="dashboard" class="hidden" aria-live="polite">
+      <div id="billing-disabled" class="notice hidden">
+        Billing is disabled. Set <strong>billing.enabled: true</strong> in the server configuration and reload it to begin recording usage.
+      </div>
+
+      <form id="filters" class="panel filters">
+        <label>Key ID<input id="filter-key" name="key_id" placeholder="SHA-256 key ID"></label>
+        <label>Provider<input id="filter-provider" name="provider" placeholder="codex"></label>
+        <label>Model<input id="filter-model" name="model" placeholder="gpt-5.4-mini"></label>
+        <label>From<input id="filter-from" name="from" type="datetime-local"></label>
+        <label>To<input id="filter-to" name="to" type="datetime-local"></label>
+        <div class="filter-actions">
+          <button class="button" type="submit">Apply</button>
+          <button id="reset-filters" class="button secondary" type="button">Reset</button>
+        </div>
+      </form>
+
+      <div class="cards">
+        <article class="panel card"><span class="card-label">Requests</span><strong id="metric-requests" class="card-value">0</strong><div id="metric-requests-meta" class="card-meta">0 success · 0 failed</div></article>
+        <article class="panel card"><span class="card-label">Input tokens</span><strong id="metric-input" class="card-value">0</strong><div class="card-meta">Provider reported</div></article>
+        <article class="panel card"><span class="card-label">Output tokens</span><strong id="metric-output" class="card-value">0</strong><div class="card-meta">Includes reasoning when reported</div></article>
+        <article class="panel card"><span class="card-label">Reasoning tokens</span><strong id="metric-reasoning" class="card-value">0</strong><div class="card-meta">Separated for pricing</div></article>
+        <article class="panel card"><span class="card-label">Cache tokens</span><strong id="metric-cache" class="card-value">0</strong><div class="card-meta">Read + creation</div></article>
+        <article class="panel card"><span class="card-label">Total cost</span><strong id="metric-cost" class="card-value">0</strong><div id="metric-cost-meta" class="card-meta">USD · configured prices</div></article>
+      </div>
+
+      <section class="panel section">
+        <div class="section-header"><h2>Usage by client key</h2><span id="keys-meta" class="section-meta"></span></div>
+        <div class="table-wrap"><table><thead><tr><th>Key</th><th class="numeric">Requests</th><th class="numeric">Input</th><th class="numeric">Output</th><th class="numeric">Reasoning</th><th class="numeric">Cost</th></tr></thead><tbody id="keys-body"></tbody></table></div>
+        <div id="keys-empty" class="empty hidden">No matching client key usage.</div>
+      </section>
+
+      <section class="panel section">
+        <div class="section-header"><h2>Usage by model</h2><span id="models-meta" class="section-meta"></span></div>
+        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th class="numeric">Requests</th><th class="numeric">Tokens</th><th class="numeric">Cost</th></tr></thead><tbody id="models-body"></tbody></table></div>
+        <div id="models-empty" class="empty hidden">No matching model usage.</div>
+      </section>
+
+      <section class="panel section">
+        <div class="section-header"><h2>Request ledger</h2><span id="events-meta" class="section-meta"></span></div>
+        <div class="table-wrap"><table><thead><tr><th>Time</th><th>Key</th><th>Provider / model</th><th>Status</th><th class="numeric">Input</th><th class="numeric">Output</th><th class="numeric">Reasoning</th><th class="numeric">Latency</th><th class="numeric">Cost</th></tr></thead><tbody id="events-body"></tbody></table></div>
+        <div id="events-empty" class="empty hidden">No matching billing events.</div>
+        <div class="pagination">
+          <button id="previous-page" class="button secondary" type="button">Previous</button>
+          <span id="page-meta">0–0 of 0</span>
+          <button id="next-page" class="button secondary" type="button">Next</button>
+        </div>
+      </section>
+
+      <div id="dashboard-status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <footer class="footer">Only hashed IDs and masked key suffixes are displayed. Raw client API keys are never returned by the billing API.</footer>
+  </main>
+
+  <script nonce="{{NONCE}}">
+    (() => {
+      'use strict';
+
+      const state = { managementKey: '', limit: 50, offset: 0, loading: false, report: null };
+      const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+      const byId = (id) => document.getElementById(id);
+      const setText = (id, value) => { byId(id).textContent = value; };
+
+      function formatNumber(value) {
+        return numberFormat.format(Number(value || 0));
+      }
+
+      function formatCost(cost, currency) {
+        if (!cost) return `0 ${currency || ''}`.trim();
+        return `${cost.total || '0.000000000'} ${cost.currency || currency || ''}`.trim();
+      }
+
+      function localRFC3339(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+      }
+
+      function cell(row, value, className) {
+        const td = document.createElement('td');
+        if (className) td.className = className;
+        td.textContent = value;
+        row.appendChild(td);
+        return td;
+      }
+
+      function replaceRows(bodyID, emptyID, values, makeRow) {
+        const body = byId(bodyID);
+        body.replaceChildren();
+        const fragment = document.createDocumentFragment();
+        values.forEach((value) => fragment.appendChild(makeRow(value)));
+        body.appendChild(fragment);
+        byId(emptyID).classList.toggle('hidden', values.length !== 0);
+        body.parentElement.classList.toggle('hidden', values.length === 0);
+      }
+
+      function setStatus(target, message, kind) {
+        const element = byId(target);
+        element.textContent = message || '';
+        element.className = `status${kind ? ` ${kind}` : ''}`;
+      }
+
+      function setLoading(loading) {
+        state.loading = loading;
+        document.querySelectorAll('button').forEach((button) => {
+          if (button.id !== 'logout') button.disabled = loading;
+        });
+      }
+
+      function queryParameters() {
+        const params = new URLSearchParams();
+        const fields = [
+          ['key_id', byId('filter-key').value.trim()],
+          ['provider', byId('filter-provider').value.trim()],
+          ['model', byId('filter-model').value.trim()],
+          ['from', localRFC3339(byId('filter-from').value)],
+          ['to', localRFC3339(byId('filter-to').value)],
+        ];
+        fields.forEach(([name, value]) => { if (value) params.set(name, value); });
+        params.set('limit', String(state.limit));
+        params.set('offset', String(state.offset));
+        return params;
+      }
+
+      async function fetchReport() {
+        const response = await fetch(`/v0/management/billing/usage?${queryParameters()}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${state.managementKey}`, Accept: 'application/json' },
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        let payload = null;
+        try { payload = await response.json(); } catch (_) { payload = null; }
+        if (!response.ok) {
+          const error = new Error(payload?.error || `Request failed with HTTP ${response.status}`);
+          error.status = response.status;
+          throw error;
+        }
+        return payload;
+      }
+
+      function renderMetrics(report) {
+        const totals = report.totals || {};
+        const tokens = totals.tokens || {};
+        setText('metric-requests', formatNumber(totals.requests));
+        setText('metric-requests-meta', `${formatNumber(totals.success)} success · ${formatNumber(totals.failed)} failed`);
+        setText('metric-input', formatNumber(tokens.input_tokens));
+        setText('metric-output', formatNumber(tokens.output_tokens));
+        setText('metric-reasoning', formatNumber(tokens.reasoning_tokens));
+        const detailedCache = Number(tokens.cache_read_tokens || 0) + Number(tokens.cache_creation_tokens || 0);
+        setText('metric-cache', formatNumber(detailedCache || tokens.cached_tokens));
+        setText('metric-cost', totals.cost?.total || '0.000000000');
+        setText('metric-cost-meta', `${report.currency || totals.cost?.currency || 'USD'} · ${formatNumber(totals.priced_requests)} priced / ${formatNumber(totals.unpriced_requests)} unpriced`);
+      }
+
+      function renderKeys(report) {
+        const keys = Array.isArray(report.by_key) ? report.by_key : [];
+        setText('keys-meta', `${formatNumber(keys.length)} ${keys.length === 1 ? 'key' : 'keys'}`);
+        replaceRows('keys-body', 'keys-empty', keys, (key) => {
+          const row = document.createElement('tr');
+          const nameCell = cell(row, '');
+          const name = document.createElement('strong');
+          name.textContent = key.key_label || key.key_mask || 'unlabeled';
+          const id = document.createElement('span');
+          id.className = 'key-id';
+          id.title = key.key_id || '';
+          id.textContent = key.key_id || '';
+          nameCell.append(name, id);
+          cell(row, formatNumber(key.requests), 'numeric');
+          cell(row, formatNumber(key.tokens?.input_tokens), 'numeric');
+          cell(row, formatNumber(key.tokens?.output_tokens), 'numeric');
+          cell(row, formatNumber(key.tokens?.reasoning_tokens), 'numeric');
+          cell(row, formatCost(key.cost, report.currency), 'numeric');
+          return row;
+        });
+      }
+
+      function renderModels(report) {
+        const models = Array.isArray(report.by_model) ? report.by_model : [];
+        setText('models-meta', `${formatNumber(models.length)} ${models.length === 1 ? 'model' : 'models'}`);
+        replaceRows('models-body', 'models-empty', models, (model) => {
+          const row = document.createElement('tr');
+          cell(row, model.provider || 'unknown');
+          cell(row, model.model || 'unknown');
+          cell(row, formatNumber(model.requests), 'numeric');
+          cell(row, formatNumber(model.tokens?.total_tokens), 'numeric');
+          cell(row, formatCost(model.cost, report.currency), 'numeric');
+          return row;
+        });
+      }
+
+      function renderEvents(report) {
+        const events = Array.isArray(report.events) ? report.events : [];
+        const matched = Number(report.matched_events || 0);
+        const start = events.length === 0 ? 0 : state.offset + 1;
+        const end = state.offset + events.length;
+        setText('events-meta', `${formatNumber(matched)} matched · ${formatNumber(report.ledger_events)} ledger events`);
+        setText('page-meta', `${formatNumber(start)}–${formatNumber(end)} of ${formatNumber(matched)}`);
+        byId('previous-page').disabled = state.loading || state.offset === 0;
+        byId('next-page').disabled = state.loading || end >= matched;
+        replaceRows('events-body', 'events-empty', events, (event) => {
+          const row = document.createElement('tr');
+          cell(row, new Date(event.timestamp).toLocaleString());
+          cell(row, event.key_label || event.key_mask || 'unlabeled');
+          cell(row, `${event.provider || 'unknown'} / ${event.model || 'unknown'}`);
+          const statusCell = cell(row, '');
+          const badge = document.createElement('span');
+          badge.className = `badge${event.failed ? ' failed' : ''}`;
+          badge.textContent = event.failed ? `Failed ${event.status_code || ''}`.trim() : `Success ${event.status_code || ''}`.trim();
+          statusCell.appendChild(badge);
+          cell(row, formatNumber(event.tokens?.input_tokens), 'numeric');
+          cell(row, formatNumber(event.tokens?.output_tokens), 'numeric');
+          cell(row, formatNumber(event.tokens?.reasoning_tokens), 'numeric');
+          cell(row, `${formatNumber(event.latency_ms)} ms`, 'numeric');
+          cell(row, formatCost(event.cost, report.currency), 'numeric');
+          return row;
+        });
+      }
+
+      function render(report) {
+        state.report = report;
+        byId('billing-disabled').classList.toggle('hidden', report.enabled !== false);
+        renderMetrics(report);
+        renderKeys(report);
+        renderModels(report);
+        renderEvents(report);
+      }
+
+      async function loadReport({ initial = false } = {}) {
+        if (state.loading) return;
+        setLoading(true);
+        setStatus(initial ? 'login-status' : 'dashboard-status', initial ? 'Connecting…' : 'Refreshing…');
+        try {
+          const report = await fetchReport();
+          render(report);
+          byId('management-key').value = '';
+          byId('login-view').classList.add('hidden');
+          byId('dashboard').classList.remove('hidden');
+          byId('logout').classList.remove('hidden');
+          setStatus('login-status', '');
+          setStatus('dashboard-status', `Updated ${new Date().toLocaleTimeString()}`, 'success');
+        } catch (error) {
+          if (error.status === 401) {
+            state.managementKey = '';
+            byId('dashboard').classList.add('hidden');
+            byId('logout').classList.add('hidden');
+            byId('login-view').classList.remove('hidden');
+            setStatus('login-status', 'Management key rejected. Check the key and try again.', 'error');
+            byId('management-key').focus();
+          } else {
+            setStatus(initial ? 'login-status' : 'dashboard-status', error.message || 'Unable to load billing usage.', 'error');
+          }
+        } finally {
+          setLoading(false);
+          if (state.report) renderEvents(state.report);
+        }
+      }
+
+      byId('login-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        state.managementKey = byId('management-key').value;
+        state.offset = 0;
+        loadReport({ initial: true });
+      });
+
+      byId('filters').addEventListener('submit', (event) => {
+        event.preventDefault();
+        state.offset = 0;
+        loadReport();
+      });
+
+      byId('reset-filters').addEventListener('click', () => {
+        byId('filters').reset();
+        state.offset = 0;
+        loadReport();
+      });
+
+      byId('previous-page').addEventListener('click', () => {
+        state.offset = Math.max(0, state.offset - state.limit);
+        loadReport();
+      });
+
+      byId('next-page').addEventListener('click', () => {
+        state.offset += state.limit;
+        loadReport();
+      });
+
+      byId('logout').addEventListener('click', () => {
+        state.managementKey = '';
+        state.report = null;
+        byId('management-key').value = '';
+        byId('dashboard').classList.add('hidden');
+        byId('logout').classList.add('hidden');
+        byId('login-view').classList.remove('hidden');
+        setStatus('dashboard-status', '');
+        byId('management-key').focus();
+      });
+    })();
+  </script>
+</body>
+</html>

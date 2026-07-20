@@ -78,6 +78,9 @@ type Config struct {
 	// Default: 60. Max: 3600.
 	RedisUsageQueueRetentionSeconds int `yaml:"redis-usage-queue-retention-seconds" json:"redis-usage-queue-retention-seconds"`
 
+	// Billing configures persistent, per-client API key usage metering and cost calculation.
+	Billing BillingConfig `yaml:"billing,omitempty" json:"billing"`
+
 	// DisableCooling disables quota cooldown scheduling when true.
 	DisableCooling bool `yaml:"disable-cooling" json:"disable-cooling"`
 
@@ -170,6 +173,39 @@ type Config struct {
 
 	// Payload defines default and override rules for provider payload parameters.
 	Payload PayloadConfig `yaml:"payload" json:"payload"`
+}
+
+// BillingConfig controls the built-in request ledger and token-based cost calculation.
+type BillingConfig struct {
+	// Enabled records usage events to the billing ledger when true.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// StorePath is the JSONL ledger path. Relative paths are resolved from the config file.
+	// When empty, billing.jsonl is stored under AuthDir.
+	StorePath string `yaml:"store-path,omitempty" json:"store-path,omitempty"`
+	// Currency labels all configured prices and calculated costs. Default: USD.
+	Currency string `yaml:"currency,omitempty" json:"currency,omitempty"`
+	// SyncOnWrite fsyncs every event before it is exposed in reports. This improves
+	// power-loss durability at the cost of write throughput.
+	SyncOnWrite bool `yaml:"sync-on-write,omitempty" json:"sync-on-write,omitempty"`
+	// KeyLabels maps client API keys to stable, user-facing billing labels.
+	// Raw keys are never persisted to the billing ledger.
+	KeyLabels map[string]string `yaml:"key-labels,omitempty" json:"key-labels,omitempty"`
+	// Prices is evaluated in order; the first provider/model pattern match wins.
+	Prices []BillingPrice `yaml:"prices,omitempty" json:"prices,omitempty"`
+}
+
+// BillingPrice defines per-million-token prices for a provider/model pattern.
+type BillingPrice struct {
+	Name                    string  `yaml:"name,omitempty" json:"name,omitempty"`
+	Provider                string  `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Model                   string  `yaml:"model,omitempty" json:"model,omitempty"`
+	InputPerMillion         float64 `yaml:"input-per-million,omitempty" json:"input-per-million,omitempty"`
+	OutputPerMillion        float64 `yaml:"output-per-million,omitempty" json:"output-per-million,omitempty"`
+	ReasoningPerMillion     float64 `yaml:"reasoning-per-million,omitempty" json:"reasoning-per-million,omitempty"`
+	CacheReadPerMillion     float64 `yaml:"cache-read-per-million,omitempty" json:"cache-read-per-million,omitempty"`
+	CacheCreationPerMillion float64 `yaml:"cache-creation-per-million,omitempty" json:"cache-creation-per-million,omitempty"`
+	InputCacheMode          string  `yaml:"input-cache-mode,omitempty" json:"input-cache-mode,omitempty"`
+	ReasoningMode           string  `yaml:"reasoning-mode,omitempty" json:"reasoning-mode,omitempty"`
 }
 
 // PluginsConfig holds dynamic plugin system settings.

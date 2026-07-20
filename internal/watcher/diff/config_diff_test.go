@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
@@ -11,6 +12,7 @@ func TestBuildConfigChangeDetails(t *testing.T) {
 	oldCfg := &config.Config{
 		Port:    8080,
 		AuthDir: "/tmp/auth-old",
+		Billing: config.BillingConfig{Enabled: false},
 		GeminiKey: []config.GeminiKey{
 			{APIKey: "old", BaseURL: "http://old", ExcludedModels: []string{"old-model"}},
 		},
@@ -38,6 +40,13 @@ func TestBuildConfigChangeDetails(t *testing.T) {
 	newCfg := &config.Config{
 		Port:    9090,
 		AuthDir: "/tmp/auth-new",
+		Billing: config.BillingConfig{
+			Enabled: true,
+			KeyLabels: map[string]string{
+				"secret-client-key": "customer-a",
+			},
+			Prices: []config.BillingPrice{{Model: "gpt-*"}},
+		},
 		GeminiKey: []config.GeminiKey{
 			{APIKey: "old", BaseURL: "http://old", ExcludedModels: []string{"old-model", "extra"}},
 		},
@@ -73,6 +82,12 @@ func TestBuildConfigChangeDetails(t *testing.T) {
 
 	expectContains(t, details, "port: 8080 -> 9090")
 	expectContains(t, details, "auth-dir: /tmp/auth-old -> /tmp/auth-new")
+	expectContains(t, details, "billing: updated (enabled false -> true, price-rules 0 -> 1)")
+	for _, detail := range details {
+		if strings.Contains(detail, "secret-client-key") {
+			t.Fatalf("billing config change leaked API key: %q", detail)
+		}
+	}
 	expectContains(t, details, "gemini[0].excluded-models: updated (1 -> 2 entries)")
 	expectContains(t, details, "remote-management.allow-remote: false -> true")
 	expectContains(t, details, "remote-management.disable-auto-update-panel: false -> true")
