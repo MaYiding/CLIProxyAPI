@@ -81,10 +81,11 @@ func TestGetBillingUsageRejectsInvalidRangeAndPagination(t *testing.T) {
 	}
 }
 
-func TestGetBillingSettingsRedactsRawKeysAndShowsQuota(t *testing.T) {
-	rawKey := "client-secret-key"
+func TestGetBillingSettingsReturnsSafePreviewNamesAndQuota(t *testing.T) {
+	rawKey := "sk-1234567890-abcdefghijklmnopqrstuvwxyz"
+	shortKey := "xy"
 	cfg := &config.Config{
-		SDKConfig: config.SDKConfig{APIKeys: []string{rawKey, "unused-key"}},
+		SDKConfig: config.SDKConfig{APIKeys: []string{rawKey, shortKey}},
 		Billing: config.BillingConfig{
 			Enabled:   true,
 			StorePath: filepath.Join(t.TempDir(), "billing.jsonl"),
@@ -111,8 +112,8 @@ func TestGetBillingSettingsRedactsRawKeysAndShowsQuota(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
-	if strings.Contains(recorder.Body.String(), rawKey) || strings.Contains(recorder.Body.String(), "unused-key") {
-		t.Fatalf("settings response leaked a raw API key: %s", recorder.Body.String())
+	if strings.Contains(recorder.Body.String(), rawKey) {
+		t.Fatalf("settings response leaked a complete long API key: %s", recorder.Body.String())
 	}
 	var response billingSettingsResponse
 	if errUnmarshal := json.Unmarshal(recorder.Body.Bytes(), &response); errUnmarshal != nil {
@@ -121,8 +122,95 @@ func TestGetBillingSettingsRedactsRawKeysAndShowsQuota(t *testing.T) {
 	if response.DefaultPricePerMillion != 1 || len(response.Keys) != 2 {
 		t.Fatalf("settings response = %#v", response)
 	}
-	if response.Keys[0].Label != "team-a" || response.Keys[0].Limit != 2 || response.Keys[0].Spent != "0.500000000" || response.Keys[0].Remaining != "1.500000000" || response.Keys[0].Blocked {
-		t.Fatalf("first key settings = %#v", response.Keys[0])
+	longKeyID, _ := billing.IdentifyKey(rawKey)
+	shortKeyID, _ := billing.IdentifyKey(shortKey)
+	keysByID := make(map[string]billingKeySettings, len(response.Keys))
+	for _, key := range response.Keys {
+		keysByID[key.KeyID] = key
+	}
+	longKey := keysByID[longKeyID]
+	if longKey.Name != "team-a" || longKey.Label != "team-a" || longKey.KeyPreview != "sk-12345…wxyz" || !longKey.KeyTruncated || longKey.Limit != 2 || longKey.Spent != "0.500000000" || longKey.Remaining != "1.500000000" || longKey.Blocked {
+		t.Fatalf("long key settings = %#v", longKey)
+	}
+	short := keysByID[shortKeyID]
+	if short.KeyPreview != shortKey || short.KeyTruncated || short.KeyMask != "****" {
+		t.Fatalf("short key settings = %#v", short)
+	}
+}
+
+func TestRevealBillingKeyReturnsOnlyOneActiveKeyWithoutCaching(t *testing.T) {
+	rawKey := "sk-1234567890-abcdefghijklmnopqrstuvwxyz"
+	orphanKey := "orphan-billing-key"
+	handler := &Handler{cfg: &config.Config{
+		SDKConfig: config.SDKConfig{APIKeys: []string{rawKey, "xy"}},
+		Billing:   config.BillingConfig{KeyLabels: map[string]string{orphanKey: "orphan"}},
+	}}
+
+	t.Run("active key", func(t *testing.T) {
+		keyID, _ := billing.IdentifyKey(rawKey)
+		recorder := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(recorder)
+		ginCtx.Params = gin.Params{{Key: "key_id", Value: keyID}}
+		ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v0/management/billing/keys/"+keyID+"/reveal", nil)
+		handler.RevealBillingKey(ginCtx)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+		}
+		if recorder.Header().Get("Cache-Control") != "no-store, private, max-age=0" || recorder.Header().Get("Pragma") != "no-cache" {
+			t.Fatalf("cache headers = %#v", recorder.Header())
+		}
+		var response map[string]string
+		if errUnmarshal := json.Unmarshal(recorder.Body.Bytes(), &response); errUnmarshal != nil {
+			t.Fatalf("Unmarshal() error = %v", errUnmarshal)
+		}
+		if response["key"] != rawKey || len(response) != 1 {
+			t.Fatalf("reveal response = %#v", response)
+		}
+	})
+
+	t.Run("orphan metadata is not revealable", func(t *testing.T) {
+		keyID, _ := billing.IdentifyKey(orphanKey)
+		recorder := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(recorder)
+		ginCtx.Params = gin.Params{{Key: "key_id", Value: keyID}}
+		ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v0/management/billing/keys/"+keyID+"/reveal", nil)
+		handler.RevealBillingKey(ginCtx)
+
+		if recorder.Code != http.StatusNotFound || strings.Contains(recorder.Body.String(), orphanKey) || strings.Contains(recorder.Body.String(), rawKey) {
+			t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
+		}
+	})
+}
+
+func TestBillingKeyNameValidationAndLegacyCompatibility(t *testing.T) {
+	tests := []struct {
+		name    string
+		update  billingKeySettingsUpdate
+		want    string
+		wantErr string
+	}{
+		{name: "canonical name", update: billingKeySettingsUpdate{Name: " Product team "}, want: "Product team"},
+		{name: "legacy label", update: billingKeySettingsUpdate{Label: "legacy"}, want: "legacy"},
+		{name: "matching fields", update: billingKeySettingsUpdate{Name: "same", Label: "same"}, want: "same"},
+		{name: "conflicting fields", update: billingKeySettingsUpdate{Name: "one", Label: "two"}, wantErr: "must match"},
+		{name: "control character", update: billingKeySettingsUpdate{Name: "bad\nname"}, wantErr: "control"},
+		{name: "too many bytes", update: billingKeySettingsUpdate{Name: strings.Repeat("名", 43)}, wantErr: "128 bytes"},
+		{name: "invalid utf8", update: billingKeySettingsUpdate{Name: string([]byte{0xff})}, wantErr: "UTF-8"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, errName := billingKeyName(test.update)
+			if test.wantErr == "" {
+				if errName != nil || got != test.want {
+					t.Fatalf("billingKeyName() = %q, %v; want %q, nil", got, errName, test.want)
+				}
+				return
+			}
+			if errName == nil || !strings.Contains(errName.Error(), test.wantErr) {
+				t.Fatalf("billingKeyName() error = %v, want containing %q", errName, test.wantErr)
+			}
+		})
 	}
 }
 
@@ -157,7 +245,7 @@ func TestPutBillingSettingsPersistsAndAppliesImmediately(t *testing.T) {
 	syncOnWrite := true
 	defaultPrice := 2.0
 	prices := []config.BillingPrice{{Name: "gpt", Provider: "openai", Model: "gpt-*", InputPerMillion: 4}}
-	keys := []billingKeySettingsUpdate{{KeyID: keyID, Label: "customer-a", Limit: 3}}
+	keys := []billingKeySettingsUpdate{{KeyID: keyID, Name: "customer-a", Limit: 3}}
 	payload, errMarshal := json.Marshal(billingSettingsUpdate{
 		Enabled:                &enabled,
 		SyncOnWrite:            &syncOnWrite,

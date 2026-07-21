@@ -10,7 +10,7 @@ import (
 )
 
 // Generic helpers for list[string]
-func (h *Handler) putStringList(c *gin.Context, set func([]string), after func()) {
+func (h *Handler) putStringList(c *gin.Context, set func([]string), after func(), snapshot func() func()) {
 	data, err := c.GetRawData()
 	if err != nil {
 		c.JSON(400, gin.H{"error": "failed to read body"})
@@ -27,14 +27,19 @@ func (h *Handler) putStringList(c *gin.Context, set func([]string), after func()
 		}
 		arr = obj.Items
 	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rollback := snapshot()
 	set(arr)
 	if after != nil {
 		after()
 	}
-	h.persist(c)
+	if !h.persistLocked(c) {
+		rollback()
+	}
 }
 
-func (h *Handler) patchStringList(c *gin.Context, target *[]string, after func()) {
+func (h *Handler) patchStringList(c *gin.Context, target func() *[]string, after func(), snapshot func() func()) {
 	var body struct {
 		Old   *string `json:"old"`
 		New   *string `json:"new"`
@@ -45,77 +50,167 @@ func (h *Handler) patchStringList(c *gin.Context, target *[]string, after func()
 		c.JSON(400, gin.H{"error": "invalid body"})
 		return
 	}
-	if body.Index != nil && body.Value != nil && *body.Index >= 0 && *body.Index < len(*target) {
-		(*target)[*body.Index] = *body.Value
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rollback := snapshot()
+	items := target()
+	if body.Index != nil && body.Value != nil && *body.Index >= 0 && *body.Index < len(*items) {
+		(*items)[*body.Index] = *body.Value
 		if after != nil {
 			after()
 		}
-		h.persist(c)
+		if !h.persistLocked(c) {
+			rollback()
+		}
 		return
 	}
 	if body.Old != nil && body.New != nil {
-		for i := range *target {
-			if (*target)[i] == *body.Old {
-				(*target)[i] = *body.New
+		for i := range *items {
+			if (*items)[i] == *body.Old {
+				(*items)[i] = *body.New
 				if after != nil {
 					after()
 				}
-				h.persist(c)
+				if !h.persistLocked(c) {
+					rollback()
+				}
 				return
 			}
 		}
-		*target = append(*target, *body.New)
+		*items = append(*items, *body.New)
 		if after != nil {
 			after()
 		}
-		h.persist(c)
+		if !h.persistLocked(c) {
+			rollback()
+		}
 		return
 	}
 	c.JSON(400, gin.H{"error": "missing fields"})
 }
 
-func (h *Handler) deleteFromStringList(c *gin.Context, target *[]string, after func()) {
+func (h *Handler) deleteFromStringList(c *gin.Context, target func() *[]string, after func(), snapshot func() func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rollback := snapshot()
+	items := target()
 	if idxStr := c.Query("index"); idxStr != "" {
 		var idx int
 		_, err := fmt.Sscanf(idxStr, "%d", &idx)
-		if err == nil && idx >= 0 && idx < len(*target) {
-			*target = append((*target)[:idx], (*target)[idx+1:]...)
+		if err == nil && idx >= 0 && idx < len(*items) {
+			*items = append((*items)[:idx], (*items)[idx+1:]...)
 			if after != nil {
 				after()
 			}
-			h.persist(c)
+			if !h.persistLocked(c) {
+				rollback()
+			}
 			return
 		}
 	}
 	if val := strings.TrimSpace(c.Query("value")); val != "" {
-		out := make([]string, 0, len(*target))
-		for _, v := range *target {
+		out := make([]string, 0, len(*items))
+		for _, v := range *items {
 			if strings.TrimSpace(v) != val {
 				out = append(out, v)
 			}
 		}
-		*target = out
+		*items = out
 		if after != nil {
 			after()
 		}
-		h.persist(c)
+		if !h.persistLocked(c) {
+			rollback()
+		}
 		return
 	}
 	c.JSON(400, gin.H{"error": "missing index or value"})
 }
 
 // api-keys
-func (h *Handler) GetAPIKeys(c *gin.Context) { c.JSON(200, gin.H{"api-keys": h.cfg.APIKeys}) }
+func (h *Handler) GetAPIKeys(c *gin.Context) {
+	h.mu.Lock()
+	apiKeys := append([]string(nil), h.cfg.APIKeys...)
+	h.mu.Unlock()
+	c.JSON(200, gin.H{"api-keys": apiKeys})
+}
 func (h *Handler) PutAPIKeys(c *gin.Context) {
 	h.putStringList(c, func(v []string) {
 		h.cfg.APIKeys = append([]string(nil), v...)
-	}, nil)
+	}, h.pruneBillingMetadataForAPIKeys, h.snapshotAPIKeysBillingLocked)
 }
 func (h *Handler) PatchAPIKeys(c *gin.Context) {
-	h.patchStringList(c, &h.cfg.APIKeys, func() {})
+	h.patchStringList(c, func() *[]string { return &h.cfg.APIKeys }, h.pruneBillingMetadataForAPIKeys, h.snapshotAPIKeysBillingLocked)
 }
 func (h *Handler) DeleteAPIKeys(c *gin.Context) {
-	h.deleteFromStringList(c, &h.cfg.APIKeys, func() {})
+	h.deleteFromStringList(c, func() *[]string { return &h.cfg.APIKeys }, h.pruneBillingMetadataForAPIKeys, h.snapshotAPIKeysBillingLocked)
+}
+
+// snapshotAPIKeysBillingLocked returns an in-memory rollback for one API key
+// list transaction. Callers must hold h.mu.
+func (h *Handler) snapshotAPIKeysBillingLocked() func() {
+	previousKeys := append([]string(nil), h.cfg.APIKeys...)
+	var previousLabels map[string]string
+	if h.cfg.Billing.KeyLabels != nil {
+		previousLabels = make(map[string]string, len(h.cfg.Billing.KeyLabels))
+		for rawKey, name := range h.cfg.Billing.KeyLabels {
+			previousLabels[rawKey] = name
+		}
+	}
+	var previousLimits map[string]float64
+	if h.cfg.Billing.KeyLimits != nil {
+		previousLimits = make(map[string]float64, len(h.cfg.Billing.KeyLimits))
+		for rawKey, limit := range h.cfg.Billing.KeyLimits {
+			previousLimits[rawKey] = limit
+		}
+	}
+	return func() {
+		h.cfg.APIKeys = previousKeys
+		h.cfg.Billing.KeyLabels = previousLabels
+		h.cfg.Billing.KeyLimits = previousLimits
+	}
+}
+
+// pruneBillingMetadataForAPIKeys removes billing metadata for client keys that
+// are no longer active. Callers must hold h.mu.
+func (h *Handler) pruneBillingMetadataForAPIKeys() {
+	if h.cfg == nil {
+		return
+	}
+	active := make(map[string]struct{}, len(h.cfg.APIKeys))
+	for _, rawKey := range h.cfg.APIKeys {
+		if key := strings.TrimSpace(rawKey); key != "" {
+			active[key] = struct{}{}
+		}
+	}
+
+	labels := make(map[string]string, len(h.cfg.Billing.KeyLabels))
+	for rawKey, label := range h.cfg.Billing.KeyLabels {
+		key := strings.TrimSpace(rawKey)
+		if _, ok := active[key]; ok {
+			if _, exists := labels[key]; !exists || rawKey == key {
+				labels[key] = label
+			}
+		}
+	}
+	if len(labels) == 0 {
+		labels = nil
+	}
+	h.cfg.Billing.KeyLabels = labels
+
+	limits := make(map[string]float64, len(h.cfg.Billing.KeyLimits))
+	for rawKey, limit := range h.cfg.Billing.KeyLimits {
+		key := strings.TrimSpace(rawKey)
+		if _, ok := active[key]; ok {
+			if _, exists := limits[key]; !exists || rawKey == key {
+				limits[key] = limit
+			}
+		}
+	}
+	if len(limits) == 0 {
+		limits = nil
+	}
+	h.cfg.Billing.KeyLimits = limits
 }
 
 // gemini-api-key: []GeminiKey

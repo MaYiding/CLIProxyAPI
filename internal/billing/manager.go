@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -288,9 +287,17 @@ func (m *Manager) ConfigureForKeys(cfg config.BillingConfig, clientKeys []string
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.enabled && m.file != nil && m.currency == currency && m.storePath == storePath &&
-		m.syncOnWrite == cfg.SyncOnWrite && m.defaultPricePerMillion == defaultRate &&
-		reflect.DeepEqual(m.prices, prices) && reflect.DeepEqual(m.keyLabels, labels) && reflect.DeepEqual(m.keyProfiles, profiles) {
+	if m.enabled && m.file != nil && m.currency == currency && m.storePath == storePath {
+		// Pricing, names, limits, and durability are live metadata. Updating them
+		// must not close and replay the ledger: existing event prices are immutable,
+		// while spend aggregates and the open append handle remain valid.
+		m.defaultPricePerMillion = defaultRate
+		m.defaultPrice = defaultPrice
+		m.syncOnWrite = cfg.SyncOnWrite
+		m.prices = prices
+		m.keyLabels = labels
+		m.keyIDLabels = keyIDLabels
+		m.keyProfiles = profiles
 		return nil
 	}
 	if errMkdir := os.MkdirAll(filepath.Dir(storePath), 0o700); errMkdir != nil {

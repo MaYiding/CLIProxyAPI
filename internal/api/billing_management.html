@@ -70,6 +70,7 @@
     let frame = null;
     let active = false;
     let reconcileQueued = false;
+    let lastContextSignature = '';
 
     function normalizedURL(value) {
       try {
@@ -93,7 +94,9 @@
       if (!apiBase || typeof value !== 'string' || !value.trim()) return;
       const normalizedName = String(name || '').toLowerCase();
       if (normalizedName !== 'authorization' && normalizedName !== 'x-management-key') return;
+      if (session?.apiBase === apiBase && session?.headerName === name && session?.headerValue === value) return;
       session = { apiBase, headerName: name, headerValue: value };
+      lastContextSignature = '';
       sendContext();
     }
 
@@ -163,12 +166,16 @@
       };
     }
 
-    function sendContext() {
+    function sendContext(force = false) {
       if (!frame?.contentWindow) return;
+      const theme = themeSnapshot();
+      const signature = JSON.stringify({ session, theme });
+      if (!force && signature === lastContextSignature) return;
+      lastContextSignature = signature;
       frame.contentWindow.postMessage({
         type: 'cpa-billing-context',
         session,
-        theme: themeSnapshot(),
+        theme,
       }, window.location.origin);
     }
 
@@ -176,26 +183,25 @@
       return new URLSearchParams(window.location.search).get(viewParameter) === viewValue;
     }
 
-    function updateURL(show, push) {
+    function updateURL(show) {
       const url = new URL(window.location.href);
       if (show) url.searchParams.set(viewParameter, viewValue);
       else url.searchParams.delete(viewParameter);
       const next = `${url.pathname}${url.search}${url.hash}`;
       const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       if (next === current) return;
-      if (push) window.history.pushState({ cpaBilling: show }, '', next);
-      else window.history.replaceState(window.history.state, '', next);
+      window.history.replaceState({ ...window.history.state, cpaBilling: show }, '', next);
     }
 
     function createFrame() {
       if (frame?.isConnected) return frame;
       frame = document.createElement('iframe');
       frame.id = frameID;
-      frame.src = '/billing.html?embedded=1';
+      frame.src = `/billing.html?embedded=1&lang=${encodeURIComponent(currentLanguage())}`;
       frame.title = localizedCopy().title;
       frame.setAttribute('loading', 'eager');
       frame.setAttribute('referrerpolicy', 'same-origin');
-      frame.addEventListener('load', sendContext);
+      frame.addEventListener('load', () => sendContext(true));
       return frame;
     }
 
@@ -204,13 +210,13 @@
       if (backdrop instanceof HTMLElement) backdrop.click();
     }
 
-    function activate(pushHistory) {
+    function activate(updateHistory) {
       const shell = document.querySelector('.app-shell');
       const content = document.querySelector('.content');
       const main = content?.querySelector(':scope > .main-content');
       if (!shell || !content || !main) return false;
       active = true;
-      if (pushHistory) updateURL(true, true);
+      if (updateHistory) updateURL(true);
       shell.classList.add('cpa-billing-view-active');
       content.classList.add('cpa-billing-content');
       main.classList.add('cpa-billing-main');
@@ -230,7 +236,7 @@
     function deactivate(updateHistory) {
       if (!active && !billingRequested()) return;
       active = false;
-      if (updateHistory) updateURL(false, false);
+      if (updateHistory) updateURL(false);
       document.querySelector('.app-shell')?.classList.remove('cpa-billing-view-active');
       document.querySelector('.content')?.classList.remove('cpa-billing-content');
       document.querySelector('.main-content')?.classList.remove('cpa-billing-main');
@@ -265,15 +271,15 @@
       if (!nav) {
         nav = createNavigationItem();
         quotaLink.insertAdjacentElement('afterend', nav);
-      } else {
-        const copy = localizedCopy();
-        nav.title = copy.label;
-        nav.setAttribute('aria-label', copy.label);
-        nav.querySelector('.nav-label').textContent = copy.label;
-        nav.querySelector('.nav-meta').textContent = copy.meta;
-        if (frame) frame.title = copy.title;
       }
-      if (billingRequested()) activate(false);
+      const copy = localizedCopy();
+      if (nav.title !== copy.label) nav.title = copy.label;
+      if (nav.getAttribute('aria-label') !== copy.label) nav.setAttribute('aria-label', copy.label);
+      const label = nav.querySelector('.nav-label');
+      const meta = nav.querySelector('.nav-meta');
+      if (label && label.textContent !== copy.label) label.textContent = copy.label;
+      if (meta && meta.textContent !== copy.meta) meta.textContent = copy.meta;
+      if (frame && frame.title !== copy.title) frame.title = copy.title;
       return true;
     }
 
@@ -281,14 +287,17 @@
       reconcileQueued = false;
       const shell = document.querySelector('.app-shell');
       if (!shell) {
-        if (document.querySelector('input[name="cpa-management-key"]')) session = null;
+        if (document.querySelector('input[name="cpa-management-key"]') && session) {
+          session = null;
+          lastContextSignature = '';
+        }
         active = false;
-        frame = null;
+        if (frame && !frame.isConnected) frame = null;
         return;
       }
       ensureNavigation();
-      if (active) activate(false);
-      sendContext();
+      if (billingRequested()) activate(false);
+      else if (active) deactivate(false);
     }
 
     function queueReconcile() {
@@ -307,17 +316,26 @@
       else deactivate(false);
     });
     window.addEventListener('hashchange', () => {
-      if (active && !billingRequested()) deactivate(false);
+      if (active) deactivate(true);
     });
     window.addEventListener('message', (event) => {
       if (event.origin !== window.location.origin || event.source !== frame?.contentWindow) return;
-      if (event.data?.type === 'cpa-billing-ready') sendContext();
-      if (event.data?.type === 'cpa-billing-auth-invalid') session = null;
+      if (event.data?.type === 'cpa-billing-ready') sendContext(true);
+      if (event.data?.type === 'cpa-billing-auth-invalid') {
+        session = null;
+        lastContextSignature = '';
+      }
     });
 
-    new MutationObserver(queueReconcile).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(() => {
+      const shell = document.querySelector('.app-shell');
+      const nav = document.getElementById(navID);
+      const frameMissing = active && (!frame || !frame.isConnected);
+      if (!shell || !nav || frameMissing) queueReconcile();
+    }).observe(document.body, { childList: true, subtree: true });
     new MutationObserver(() => {
       ensureNavigation();
+      lastContextSignature = '';
       sendContext();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'lang'] });
     queueReconcile();

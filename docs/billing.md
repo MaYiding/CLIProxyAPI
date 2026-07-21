@@ -6,7 +6,7 @@ CLIProxyAPI can write an append-only, request-level billing ledger and calculate
 
 Each JSONL event contains:
 
-- the client API key SHA-256 identifier, mask, and optional label;
+- the client API key SHA-256 identifier, mask, and optional display name;
 - provider, executor, upstream model, requested alias, endpoint, and request ID;
 - success/failure status, latency, time to first token, credential index, and service tier;
 - input, output, reasoning, cached, cache-read, cache-creation, and total tokens;
@@ -31,6 +31,8 @@ billing:
   # Omitted defaults to 1.00; explicit 0 is allowed.
   default-price-per-million: 1.00
 
+  # Display names used by the dashboard and reports.
+  # The configuration key keeps its legacy name for compatibility.
   key-labels:
     "client-api-key-a": "customer-a"
     "client-api-key-b": "internal-tools"
@@ -118,9 +120,10 @@ Editable settings are available through:
 ```text
 GET /v0/management/billing/settings
 PUT /v0/management/billing/settings
+POST /v0/management/billing/keys/:key_id/reveal
 ```
 
-These endpoints power the built-in dashboard. They expose only hashed key IDs and masked suffixes, never raw client keys. The PUT endpoint accepts complete billing settings, validates prices and limits, persists `config.yaml`, and applies the new configuration immediately.
+These endpoints power the built-in dashboard. The settings response includes a stable hashed ID plus a real display preview: short keys are shown in full, while long keys use the first eight and last four characters. The reveal endpoint returns exactly one complete, currently active client key by its hashed ID, uses the existing management authentication, and sends non-cacheable responses. The full key is not placed in a URL, log, report, or ledger. The PUT endpoint accepts complete billing settings, including per-key display names and limits, validates them, persists `config.yaml`, and applies the new configuration immediately.
 
 ## Web dashboard
 
@@ -130,7 +133,7 @@ Open the management center at:
 http://127.0.0.1:8317/management.html
 ```
 
-Sign in once with the normal management-center credentials, then select **API Key Billing** in the left sidebar. No second authentication step is required. The page provides editable default and advanced prices, per-key labels and limits, live blocked/remaining status, aggregate cards, per-key and per-model tables, request details, filters, and pagination. The legacy `/billing.html` URL redirects to this integrated page. The module is embedded in the server binary, so it remains available independently of management-center asset updates.
+Sign in once with the normal management-center credentials, then select **Billing & usage** in the left sidebar. No second authentication step is required. The default **KEY management** tab puts each display name, key preview/reveal control, cumulative spend, limit, remaining amount, and live stop status together. Separate tabs contain usage filters/request details and global/default/advanced price settings. The layout is localized with the management center and adapts to mobile screens without forcing the core key-management table into a wide horizontal scroll. The legacy `/billing.html` URL redirects to this integrated page. The module is embedded in the server binary, so it remains available independently of management-center asset updates.
 
 The dashboard follows the same availability rules as `management.html`: it returns `404` when the control panel is disabled or the process runs in Home mode. API authentication and filtering remain enforced by `/v0/management/billing/usage`.
 

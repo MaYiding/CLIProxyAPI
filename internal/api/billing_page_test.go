@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/billing"
 )
 
 func TestBillingPage(t *testing.T) {
@@ -47,13 +50,28 @@ func TestBillingPage(t *testing.T) {
 
 		body := rr.Body.String()
 		for _, want := range []string{
-			"Per-key Billing",
+			"Per-key billing",
+			"分 KEY 计费",
+			"分 KEY 計費",
+			"Тарификация по ключам",
 			"cpa-billing-context",
 			"/billing/usage",
 			"/billing/settings",
+			"/billing/keys/",
 			`id="settings-default-price"`,
-			`id="settings-keys-body"`,
-			"Raw client API keys are never returned",
+			`id="key-body"`,
+			`data-i18n="tabKeys"`,
+			"key_preview",
+			"key_truncated",
+			"revealIcon",
+			"key-value.revealed",
+			`classList.add("revealed")`,
+			"validateName",
+			"keyDisplayText(event.key_id",
+			"translateDynamicControls",
+			"state.overview = results[0]",
+			"state.overview = overview",
+			"Short KEYs are shown in full",
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("billing page missing %q", want)
@@ -61,6 +79,9 @@ func TestBillingPage(t *testing.T) {
 		}
 		if strings.Contains(body, `id="management-key"`) || strings.Contains(body, `id="login-form"`) {
 			t.Fatal("embedded billing page contains a second management login")
+		}
+		if strings.Contains(body, "if (state.settings) renderSettings(state.settings)") {
+			t.Fatal("language changes still reset unsaved billing form drafts")
 		}
 		if strings.Contains(body, billingPageNoncePlaceholder) {
 			t.Fatal("billing page still contains nonce placeholder")
@@ -99,6 +120,36 @@ func TestBillingPage(t *testing.T) {
 	})
 }
 
+func TestBillingKeyRevealRouteUsesExistingManagementAuthentication(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "test-management-key")
+	server := newTestServer(t)
+	rawKey := "sk-1234567890-abcdefghijklmnopqrstuvwxyz"
+	server.cfg.APIKeys = []string{rawKey}
+	keyID, _ := billing.IdentifyKey(rawKey)
+	target := "/v0/management/billing/keys/" + keyID + "/reveal"
+
+	unauthenticated := httptest.NewRecorder()
+	server.engine.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodPost, target, nil))
+	if unauthenticated.Code != http.StatusUnauthorized || strings.Contains(unauthenticated.Body.String(), rawKey) {
+		t.Fatalf("unauthenticated response = %d %s", unauthenticated.Code, unauthenticated.Body.String())
+	}
+
+	request := httptest.NewRequest(http.MethodPost, target, nil)
+	request.Header.Set("Authorization", "Bearer test-management-key")
+	recorder := httptest.NewRecorder()
+	server.engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("authenticated response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	var response map[string]string
+	if errUnmarshal := json.Unmarshal(recorder.Body.Bytes(), &response); errUnmarshal != nil {
+		t.Fatalf("Unmarshal() error = %v", errUnmarshal)
+	}
+	if response["key"] != rawKey || recorder.Header().Get("Cache-Control") != "no-store, private, max-age=0" {
+		t.Fatalf("authenticated response = %#v headers=%#v", response, recorder.Header())
+	}
+}
+
 func TestManagementPageIncludesDiscoverableBillingEntry(t *testing.T) {
 	staticDir := t.TempDir()
 	managementPage := []byte("<!doctype html><html><body><main>management app</main></body></html>")
@@ -122,7 +173,11 @@ func TestManagementPageIncludesDiscoverableBillingEntry(t *testing.T) {
 		"cpa-billing-nav",
 		"cpa-view",
 		"captureSession",
-		"/billing.html?embedded=1",
+		"/billing.html?embedded=1&lang=",
+		"lastContextSignature",
+		"JSON.stringify({ session, theme })",
+		"history.replaceState",
+		"frameMissing",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("management page missing %q: %s", want, body)
@@ -130,6 +185,12 @@ func TestManagementPageIncludesDiscoverableBillingEntry(t *testing.T) {
 	}
 	if strings.Contains(body, `href="/billing.html"`) {
 		t.Fatal("management page still contains the legacy standalone billing link")
+	}
+	if strings.Contains(body, "history.pushState") {
+		t.Fatal("billing navigation still adds duplicate browser history entries")
+	}
+	if strings.Contains(body, "new MutationObserver(queueReconcile)") {
+		t.Fatal("billing integration still observes every mutation with an unconditional reconcile loop")
 	}
 	if count := strings.Count(body, `id="cpa-billing-management-module"`); count != 1 {
 		t.Fatalf("billing module count = %d, want 1", count)

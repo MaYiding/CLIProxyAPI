@@ -191,8 +191,9 @@ type BillingConfig struct {
 	// provider/model price rule matches. Nil defaults to one currency unit per
 	// million tokens; a pointer is used so an explicit zero remains configurable.
 	DefaultPricePerMillion *float64 `yaml:"default-price-per-million,omitempty" json:"default-price-per-million,omitempty"`
-	// KeyLabels maps client API keys to stable, user-facing billing labels.
-	// Raw keys are never persisted to the billing ledger.
+	// KeyLabels maps client API keys to stable, user-facing display names. The
+	// field name is retained for configuration compatibility. Raw keys are never
+	// persisted to the billing ledger.
 	KeyLabels map[string]string `yaml:"key-labels,omitempty" json:"key-labels,omitempty"`
 	// KeyLimits maps client API keys to cumulative spend limits in Currency units.
 	// Missing and zero values are unlimited. Limits are enforced before proxying a
@@ -1310,6 +1311,7 @@ func SaveConfigPreserveComments(configFile string, cfg *Config) error {
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-excluded-models")
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-model-alias")
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "plugins", "configs")
+	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "billing")
 
 	// Merge generated into original in-place, preserving comments/order of existing nodes.
 	mergeMappingPreserve(original.Content[0], generated.Content[0])

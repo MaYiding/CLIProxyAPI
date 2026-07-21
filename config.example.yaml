@@ -114,7 +114,8 @@ billing:
   # Fallback rate for every token category when no provider/model rule matches.
   # Defaults to 1.00 when omitted. Set 0 explicitly for free accounting.
   default-price-per-million: 1.00
-  # Optional labels make key-level reports easier to read. Keys remain hashed/masked in the ledger.
+  # Optional display names make key-level management and reports easier to read.
+  # The legacy field name remains key-labels; raw keys are still never written to the ledger.
   key-labels:
     "your-api-key-1": "team-a"
   # Optional cumulative spend limits in the configured currency. Missing or 0 means unlimited.

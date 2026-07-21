@@ -4,8 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232563eb'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='38' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
-  <title>Per-key Billing · CLIProxyAPI</title>
+  <title>CLIProxyAPI</title>
   <style nonce="{{NONCE}}">
     :root {
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -14,12 +13,14 @@
       font-synthesis: none;
       --surface: var(--bg-primary, #f0eee8);
       --surface-subtle: var(--bg-secondary, #faf9f5);
+      --surface-hover: var(--bg-hover, #e8e5de);
       --border: var(--border-color, #e3e1db);
       --muted: var(--text-secondary, #6d6760);
       --text: var(--text-primary, #2d2a26);
-      --accent: var(--primary-color, #8b8680);
-      --accent-strong: var(--primary-hover, #7f7a74);
-      --success: var(--success-color, #10b981);
+      --accent: var(--primary-color, #77716a);
+      --accent-strong: var(--primary-hover, #625d57);
+      --success: var(--success-color, #0f8a62);
+      --warning: var(--warning-color, #b7791f);
       --danger: var(--error-color, #c65746);
     }
     * { box-sizing: border-box; }
@@ -27,108 +28,120 @@
     body { margin: 0; color: var(--text); background: var(--surface-subtle); }
     button, input, select { font: inherit; }
     button { cursor: pointer; }
-    a { color: var(--accent); }
     .hidden { display: none !important; }
-    .shell { width: min(1560px, 100%); margin: 0 auto; padding: 76px clamp(20px, 3vw, 48px) 40px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
-    .brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
-    .logo { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 11px; color: var(--accent); font-weight: 800; background: var(--surface); box-shadow: var(--shadow); }
-    h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.035em; }
-    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: .9rem; }
-    .top-actions { display: flex; align-items: center; gap: 10px; }
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
-    label { display: grid; gap: 7px; color: var(--text); font-size: .86rem; font-weight: 650; }
-    input, select { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 11px; color: var(--text); background: var(--surface-subtle); outline: none; }
-    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-    .button { min-height: 40px; border: 1px solid transparent; border-radius: 8px; padding: 9px 14px; color: var(--primary-contrast, #fff); font-weight: 650; background: var(--accent); }
+    .shell { width: min(1440px, 100%); margin: 0 auto; padding: 72px clamp(18px, 3vw, 42px) 36px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .logo { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 10px; color: var(--accent); font-weight: 800; background: var(--surface); box-shadow: var(--shadow); }
+    h1 { margin: 0; font-size: clamp(1.3rem, 2.5vw, 1.85rem); letter-spacing: -.03em; }
+    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: .86rem; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md, 12px); box-shadow: var(--shadow); }
+    .button { min-height: 38px; border: 1px solid transparent; border-radius: 8px; padding: 8px 13px; color: var(--primary-contrast, #fff); font-weight: 680; background: var(--accent); }
     .button:hover { background: var(--accent-strong); }
     .button.secondary { color: var(--text); background: var(--surface); border-color: var(--border); }
-    .button.secondary:hover { background: var(--surface-subtle); }
-    .button:disabled { cursor: not-allowed; opacity: .6; }
-    .status { min-height: 22px; margin-top: 12px; color: var(--muted); font-size: .88rem; }
+    .button.secondary:hover { background: var(--surface-hover); }
+    .button:disabled { cursor: not-allowed; opacity: .58; }
+    .notice { margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: var(--surface); line-height: 1.45; }
+    .notice.error { color: var(--warning-text, var(--danger)); border-color: var(--warning-border, var(--border)); background: var(--warning-bg, var(--surface)); }
+    .tabs { display: flex; gap: 4px; padding: 5px; margin-bottom: 16px; overflow-x: auto; }
+    .tab { min-width: max-content; border: 0; border-radius: 8px; padding: 9px 16px; color: var(--muted); font-weight: 700; background: transparent; }
+    .tab:hover { color: var(--text); background: var(--surface-hover); }
+    .tab[aria-selected="true"] { color: var(--text); background: var(--surface-subtle); box-shadow: inset 0 0 0 1px var(--border); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .card { min-width: 0; padding: 15px 16px; }
+    .card-label { color: var(--muted); font-size: .75rem; font-weight: 720; letter-spacing: .035em; }
+    .card-value { display: block; margin-top: 7px; font-size: clamp(1.15rem, 2vw, 1.55rem); font-weight: 780; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    .card-meta { margin-top: 4px; color: var(--muted); font-size: .76rem; }
+    .section { margin-bottom: 16px; overflow: hidden; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 17px 12px; }
+    .section-header h2 { margin: 0; font-size: 1rem; }
+    .section-hint, .section-meta { color: var(--muted); font-size: .78rem; }
+    .section-hint { margin-top: 3px; }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; min-width: 720px; border-collapse: collapse; }
+    th, td { padding: 11px 13px; border-top: 1px solid var(--border); text-align: left; vertical-align: middle; white-space: nowrap; font-size: .82rem; }
+    th { color: var(--muted); background: var(--surface-subtle); font-size: .71rem; letter-spacing: .03em; }
+    td.numeric, th.numeric { text-align: right; }
+    tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+    label { display: grid; gap: 6px; color: var(--text); font-size: .83rem; font-weight: 650; }
+    input, select { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; color: var(--text); background: var(--surface-subtle); outline: none; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+    .key-table { min-width: 940px; }
+    .key-table .identity { min-width: 270px; white-space: normal; }
+    .key-name-input { max-width: 250px; margin-bottom: 7px; font-weight: 650; }
+    .key-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .key-value { display: inline-block; max-width: 230px; overflow: hidden; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
+    .key-value.revealed { flex: 1 1 auto; max-width: 100%; overflow: visible; color: var(--text); overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
+    .reveal-button { display: inline-grid; place-items: center; width: 30px; height: 28px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 7px; padding: 0; color: var(--muted); background: transparent; }
+    .reveal-button:hover { color: var(--text); background: var(--surface-hover); }
+    .reveal-button svg { width: 16px; height: 16px; }
+    .limit-input { width: 120px; margin-left: auto; text-align: right; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); font-size: .71rem; font-weight: 720; }
+    .badge.blocked { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
+    .badge.unlimited { color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+    .empty { padding: 25px 18px; border-top: 1px solid var(--border); color: var(--muted); text-align: center; }
+    .actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 13px 17px 16px; border-top: 1px solid var(--border); }
+    .status { min-height: 20px; flex: 1; color: var(--muted); font-size: .82rem; }
     .status.error { color: var(--danger); }
     .status.success { color: var(--success); }
-    .notice { margin-bottom: 18px; padding: 14px 16px; border: 1px solid var(--warning-border, color-mix(in srgb, var(--danger) 35%, transparent)); border-radius: 10px; color: var(--warning-text, var(--danger)); background: var(--warning-bg, color-mix(in srgb, var(--danger) 10%, transparent)); line-height: 1.45; }
-    .session-notice { color: var(--muted); border-color: var(--border); background: var(--surface); }
-    .session-notice.error { color: var(--warning-text, var(--danger)); border-color: var(--warning-border, var(--border)); background: var(--warning-bg, var(--surface)); }
-    .settings-form { margin-bottom: 18px; overflow: hidden; }
-    .settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 4px 18px 18px; }
-    .setting-toggle { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-subtle); }
+    .filters { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 11px; padding: 16px; margin-bottom: 16px; }
+    .filter-actions { display: flex; align-items: end; gap: 7px; }
+    .filter-actions .button { flex: 1; }
+    .usage-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 13px 17px 15px; border-top: 1px solid var(--border); }
+    .pagination span { color: var(--muted); font-size: .8rem; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 4px 17px 17px; }
+    .setting-toggle { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); }
     .setting-toggle input { width: 18px; height: 18px; margin: 0; }
     .setting-toggle span { display: grid; gap: 2px; }
-    .setting-toggle small, .field-hint, .settings-help { color: var(--muted); font-size: .75rem; font-weight: 500; }
-    .readonly-value { min-height: 42px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--muted); background: var(--surface-subtle); overflow-wrap: anywhere; }
-    .settings-subheader { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 18px 10px; border-top: 1px solid var(--border); }
-    .settings-subheader h3 { margin: 0; font-size: .9rem; }
-    .settings-subheader p { margin: 2px 0 0; color: var(--muted); font-size: .76rem; }
-    .settings-table { min-width: 980px; }
-    .settings-table input { min-width: 130px; padding: 8px 9px; }
-    .settings-table .limit-input { min-width: 115px; text-align: right; }
-    .settings-empty { padding: 18px; border-top: 1px solid var(--border); color: var(--muted); text-align: center; }
-    .advanced-pricing { border-top: 1px solid var(--border); }
-    .advanced-pricing summary { cursor: pointer; padding: 15px 18px; font-weight: 750; }
-    .advanced-pricing summary span { margin-left: 8px; color: var(--muted); font-size: .76rem; font-weight: 500; }
-    .rules-toolbar { display: flex; justify-content: flex-end; padding: 0 18px 10px; }
-    .rule-table { min-width: 1500px; }
-    .rule-table input, .rule-table select { min-width: 105px; padding: 7px 8px; }
-    .rule-table .pattern-input { min-width: 135px; }
-    .remove-rule { min-height: 34px; padding: 6px 10px; color: var(--danger); background: transparent; border: 1px solid rgba(180, 35, 24, .25); border-radius: 8px; }
-    .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 18px 18px; border-top: 1px solid var(--border); }
-    .settings-actions .status { flex: 1; margin: 0; }
-    .filters { display: grid; grid-template-columns: repeat(6, minmax(125px, 1fr)); gap: 12px; padding: 18px; margin-bottom: 18px; }
-    .filter-actions { display: flex; align-items: end; gap: 8px; }
-    .filter-actions .button { flex: 1; }
-    .cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .card { min-width: 0; padding: 17px; }
-    .card-label { color: var(--muted); font-size: .78rem; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
-    .card-value { display: block; margin-top: 8px; font-size: clamp(1.2rem, 2.2vw, 1.75rem); font-weight: 780; letter-spacing: -.035em; overflow-wrap: anywhere; }
-    #metric-cost { font-size: clamp(1rem, 1.8vw, 1.5rem); white-space: nowrap; }
-    .card-meta { margin-top: 5px; color: var(--muted); font-size: .79rem; }
-    .section { margin-bottom: 18px; overflow: hidden; }
-    .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 18px 13px; }
-    .section-header h2 { margin: 0; font-size: 1rem; }
-    .section-meta { color: var(--muted); font-size: .82rem; }
-    .table-wrap { width: 100%; overflow-x: auto; }
-    table { width: 100%; min-width: 760px; border-collapse: collapse; }
-    th, td { padding: 11px 14px; border-top: 1px solid var(--border); text-align: left; vertical-align: top; white-space: nowrap; font-size: .83rem; }
-    th { color: var(--muted); background: var(--surface-subtle); font-size: .73rem; letter-spacing: .035em; text-transform: uppercase; }
-    td.numeric, th.numeric { text-align: right; }
-    tbody tr:hover { background: rgba(37, 99, 235, .035); }
-    .key-id { display: block; max-width: 160px; overflow: hidden; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; text-overflow: ellipsis; }
-    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; color: var(--success); background: rgba(4, 120, 87, .1); font-size: .72rem; font-weight: 700; }
-    .badge.failed { color: var(--danger); background: rgba(180, 35, 24, .1); }
-    .badge.blocked { color: var(--danger); background: rgba(180, 35, 24, .1); }
-    .badge.unlimited { color: var(--muted); background: rgba(100, 116, 139, .12); }
-    .empty { padding: 28px; color: var(--muted); text-align: center; }
-    .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 18px 17px; border-top: 1px solid var(--border); }
-    .pagination span { color: var(--muted); font-size: .83rem; }
-    .footer { padding: 4px 0 20px; color: var(--muted); font-size: .78rem; text-align: center; }
-    @media (max-width: 1180px) {
+    .field-hint, .setting-toggle small { color: var(--muted); font-size: .73rem; font-weight: 500; }
+    .readonly-value { min-height: 40px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface-subtle); overflow-wrap: anywhere; }
+    .advanced { border-top: 1px solid var(--border); }
+    .advanced summary { cursor: pointer; padding: 14px 17px; font-weight: 720; }
+    .advanced summary small { display: block; margin-top: 3px; color: var(--muted); font-size: .73rem; font-weight: 500; }
+    .rules-toolbar { display: flex; justify-content: flex-end; padding: 0 17px 10px; }
+    .rules-table { min-width: 1460px; }
+    .rules-table input, .rules-table select { min-width: 100px; padding: 7px 8px; }
+    .remove-rule { min-height: 32px; border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius: 7px; padding: 6px 9px; color: var(--danger); background: transparent; }
+    .footer { padding: 4px 0 10px; color: var(--muted); font-size: .75rem; text-align: center; }
+    @media (max-width: 1000px) {
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filter-actions { grid-column: span 1; }
     }
     @media (max-width: 720px) {
-      .shell { padding: 80px 16px 28px; }
+      .shell { padding: 76px 13px 26px; }
       .topbar { align-items: flex-start; }
-      .top-actions { flex-direction: column; align-items: stretch; }
+      .subtitle { max-width: 250px; }
+      .tabs { position: sticky; top: 64px; z-index: 5; }
+      .cards, .usage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .card { padding: 13px; }
+      .section-header { align-items: flex-start; flex-direction: column; gap: 6px; padding: 14px 14px 11px; }
       .filters { grid-template-columns: 1fr 1fr; padding: 14px; }
-      .settings-grid { grid-template-columns: 1fr; padding: 4px 14px 14px; }
-      .settings-actions { align-items: stretch; flex-direction: column; }
-      .settings-actions .button { width: 100%; }
       .filter-actions { grid-column: 1 / -1; }
-      .cards { grid-template-columns: 1fr 1fr; gap: 10px; }
-      .card { padding: 14px; }
+      .settings-grid { grid-template-columns: 1fr; padding: 3px 14px 14px; }
+      .actions { align-items: stretch; flex-direction: column; padding: 12px 14px 14px; }
+      .actions .button { width: 100%; }
+      .key-table { min-width: 0; }
+      .key-table thead { display: none; }
+      .key-table, .key-table tbody, .key-table tr, .key-table td { display: block; width: 100%; }
+      .key-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 12px 13px; border-top: 1px solid var(--border); }
+      .key-table td { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 2px; border: 0; text-align: right; white-space: normal; }
+      .key-table td::before { content: attr(data-label); color: var(--muted); font-size: .71rem; font-weight: 700; text-align: left; }
+      .key-table td.identity { grid-column: 1 / -1; display: block; min-width: 0; padding-bottom: 10px; text-align: left; }
+      .key-table td.identity::before { display: block; margin-bottom: 7px; }
+      .key-name-input { max-width: none; }
+      .key-value { max-width: calc(100vw - 100px); }
+      .limit-input { width: 105px; }
     }
     @media (max-width: 440px) {
-      .topbar { display: grid; }
-      .top-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .brand .logo { display: none; }
+      .cards, .usage-summary { grid-template-columns: 1fr 1fr; }
       .filters { grid-template-columns: 1fr; }
       .filter-actions { grid-column: auto; }
-      .cards { grid-template-columns: 1fr; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .remove-rule { color: #fca5a5; border-color: rgba(252, 165, 165, .3); }
+      .tab { padding-inline: 13px; }
     }
   </style>
 </head>
@@ -138,644 +151,922 @@
       <div class="brand">
         <div class="logo" aria-hidden="true">$</div>
         <div>
-          <h1>Per-key Billing</h1>
-          <p class="subtitle">Request, token, and cost accounting for CLIProxyAPI client keys</p>
+          <h1 data-i18n="heading"></h1>
+          <p class="subtitle" data-i18n="subtitle"></p>
         </div>
       </div>
-      <div class="top-actions">
-        <button id="refresh" class="button secondary" type="button">Refresh</button>
-      </div>
+      <button id="refresh" class="button secondary" type="button" data-i18n="refresh"></button>
     </header>
 
-    <section id="dashboard" aria-live="polite">
-      <div id="session-notice" class="notice session-notice">
-        Connecting with the current Management Center session…
-      </div>
-      <div id="billing-disabled" class="notice hidden">
-        Billing is disabled. Enable it in Billing settings below to record usage and enforce key limits.
+    <div id="session-notice" class="notice" data-i18n="waiting"></div>
+    <div id="billing-disabled" class="notice error hidden" data-i18n="disabled"></div>
+
+    <nav class="panel tabs" role="tablist" aria-label="Billing">
+      <button class="tab" type="button" role="tab" aria-selected="true" data-tab="keys" data-i18n="tabKeys"></button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-tab="usage" data-i18n="tabUsage"></button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-tab="settings" data-i18n="tabSettings"></button>
+    </nav>
+
+    <section id="panel-keys" class="tab-panel active" role="tabpanel">
+      <div class="cards">
+        <article class="panel card"><span class="card-label" data-i18n="requests"></span><strong id="overview-requests" class="card-value">0</strong><div id="overview-requests-meta" class="card-meta"></div></article>
+        <article class="panel card"><span class="card-label" data-i18n="totalTokens"></span><strong id="overview-tokens" class="card-value">0</strong><div class="card-meta" data-i18n="allTokenTypes"></div></article>
+        <article class="panel card"><span class="card-label" data-i18n="totalCost"></span><strong id="overview-cost" class="card-value">0</strong><div id="overview-cost-meta" class="card-meta"></div></article>
+        <article class="panel card"><span class="card-label" data-i18n="blockedKeys"></span><strong id="overview-blocked" class="card-value">0</strong><div id="overview-blocked-meta" class="card-meta"></div></article>
       </div>
 
-      <form id="billing-settings" class="panel settings-form">
+      <form id="key-form" class="panel section">
         <div class="section-header">
-          <div><h2>Billing settings</h2><div class="section-meta">Prices affect new requests; historical event prices remain frozen.</div></div>
+          <div><h2 data-i18n="keyManagement"></h2><div class="section-hint" data-i18n="keyHint"></div></div>
+          <span id="key-count" class="section-meta"></span>
+        </div>
+        <div id="key-table-wrap" class="table-wrap">
+          <table class="key-table">
+            <thead><tr>
+              <th data-i18n="nameAndKey"></th>
+              <th class="numeric" data-i18n="requests"></th>
+              <th class="numeric" data-i18n="tokens"></th>
+              <th class="numeric" data-i18n="spent"></th>
+              <th class="numeric" data-i18n="limit"></th>
+              <th class="numeric" data-i18n="remaining"></th>
+              <th data-i18n="status"></th>
+            </tr></thead>
+            <tbody id="key-body"></tbody>
+          </table>
+        </div>
+        <div id="key-empty" class="empty hidden" data-i18n="noKeys"></div>
+        <div class="actions">
+          <div id="key-status" class="status" role="status" aria-live="polite"></div>
+          <button id="save-keys" class="button" type="submit" data-i18n="saveKeys"></button>
+        </div>
+      </form>
+    </section>
+
+    <section id="panel-usage" class="tab-panel" role="tabpanel">
+      <form id="filters" class="panel filters">
+        <label><span data-i18n="key"></span><select id="filter-key" name="key_id"></select></label>
+        <label><span data-i18n="provider"></span><input id="filter-provider" name="provider" data-i18n-placeholder="providerPlaceholder"></label>
+        <label><span data-i18n="model"></span><input id="filter-model" name="model" data-i18n-placeholder="modelPlaceholder"></label>
+        <label><span data-i18n="from"></span><input id="filter-from" name="from" type="datetime-local"></label>
+        <label><span data-i18n="to"></span><input id="filter-to" name="to" type="datetime-local"></label>
+        <div class="filter-actions">
+          <button class="button" type="submit" data-i18n="apply"></button>
+          <button id="reset-filters" class="button secondary" type="button" data-i18n="reset"></button>
+        </div>
+      </form>
+
+      <div class="cards usage-summary">
+        <article class="panel card"><span class="card-label" data-i18n="matchedRequests"></span><strong id="usage-requests" class="card-value">0</strong></article>
+        <article class="panel card"><span class="card-label" data-i18n="matchedTokens"></span><strong id="usage-tokens" class="card-value">0</strong></article>
+        <article class="panel card"><span class="card-label" data-i18n="matchedCost"></span><strong id="usage-cost" class="card-value">0</strong></article>
+      </div>
+
+      <section class="panel section">
+        <div class="section-header"><h2 data-i18n="usageByModel"></h2><span id="models-meta" class="section-meta"></span></div>
+        <div class="table-wrap"><table><thead><tr><th data-i18n="provider"></th><th data-i18n="model"></th><th class="numeric" data-i18n="requests"></th><th class="numeric" data-i18n="tokens"></th><th class="numeric" data-i18n="cost"></th></tr></thead><tbody id="models-body"></tbody></table></div>
+        <div id="models-empty" class="empty hidden" data-i18n="noModels"></div>
+      </section>
+
+      <section class="panel section">
+        <div class="section-header"><h2 data-i18n="requestLedger"></h2><span id="events-meta" class="section-meta"></span></div>
+        <div class="table-wrap"><table><thead><tr><th data-i18n="time"></th><th data-i18n="key"></th><th data-i18n="providerModel"></th><th data-i18n="status"></th><th class="numeric" data-i18n="input"></th><th class="numeric" data-i18n="output"></th><th class="numeric" data-i18n="reasoning"></th><th class="numeric" data-i18n="latency"></th><th class="numeric" data-i18n="cost"></th></tr></thead><tbody id="events-body"></tbody></table></div>
+        <div id="events-empty" class="empty hidden" data-i18n="noEvents"></div>
+        <div class="pagination">
+          <button id="previous-page" class="button secondary" type="button" data-i18n="previous"></button>
+          <span id="page-meta"></span>
+          <button id="next-page" class="button secondary" type="button" data-i18n="next"></button>
+        </div>
+      </section>
+    </section>
+
+    <section id="panel-settings" class="tab-panel" role="tabpanel">
+      <form id="settings-form" class="panel section">
+        <div class="section-header">
+          <div><h2 data-i18n="billingSettings"></h2><div class="section-hint" data-i18n="settingsHint"></div></div>
           <span id="settings-currency" class="section-meta">USD</span>
         </div>
         <div class="settings-grid">
-          <label class="setting-toggle">
-            <input id="settings-enabled" type="checkbox">
-            <span>Enable billing<small>Record usage and enforce configured limits</small></span>
-          </label>
-          <label>
-            Default price / 1M tokens
-            <input id="settings-default-price" type="number" min="0" step="0.000001" inputmode="decimal" required>
-            <span class="field-hint">Applied to all token categories when no advanced rule matches.</span>
-          </label>
-          <label class="setting-toggle">
-            <input id="settings-sync" type="checkbox">
-            <span>Sync every write<small>Stronger durability with lower throughput</small></span>
-          </label>
-          <label>
-            Ledger path
-            <span id="settings-store-path" class="readonly-value">Default auth directory</span>
-          </label>
+          <label class="setting-toggle"><input id="settings-enabled" type="checkbox"><span><span data-i18n="enableBilling"></span><small data-i18n="enableHint"></small></span></label>
+          <label><span data-i18n="defaultPrice"></span><input id="settings-default-price" type="number" min="0" step="0.000001" inputmode="decimal" required><span class="field-hint" data-i18n="defaultPriceHint"></span></label>
+          <label class="setting-toggle"><input id="settings-sync" type="checkbox"><span><span data-i18n="syncEveryWrite"></span><small data-i18n="syncHint"></small></span></label>
+          <label><span data-i18n="ledgerPath"></span><span id="settings-store-path" class="readonly-value"></span></label>
         </div>
-
-        <div class="settings-subheader">
-          <div><h3>Client key limits</h3><p>Limits are cumulative for the current ledger. Set 0 for unlimited.</p></div>
-          <span id="settings-keys-meta" class="section-meta"></span>
-        </div>
-        <div class="table-wrap">
-          <table class="settings-table">
-            <thead><tr><th>Key</th><th>Label</th><th class="numeric">Spent</th><th class="numeric">Limit</th><th class="numeric">Remaining</th><th>Status</th></tr></thead>
-            <tbody id="settings-keys-body"></tbody>
-          </table>
-        </div>
-        <div id="settings-keys-empty" class="settings-empty hidden">Add client keys in Management before assigning billing limits.</div>
-
-        <details class="advanced-pricing">
-          <summary>Advanced provider/model prices <span>First matching rule wins; the default price remains the fallback.</span></summary>
-          <div class="rules-toolbar"><button id="add-price-rule" class="button secondary" type="button">Add price rule</button></div>
-          <div class="table-wrap">
-            <table class="rule-table">
-              <thead><tr><th>Name</th><th>Provider</th><th>Model</th><th class="numeric">Input / M</th><th class="numeric">Output / M</th><th class="numeric">Reasoning / M</th><th class="numeric">Cache read / M</th><th class="numeric">Cache create / M</th><th>Cache mode</th><th>Reasoning mode</th><th></th></tr></thead>
+        <details class="advanced">
+          <summary><span data-i18n="advancedPrices"></span><small data-i18n="advancedHint"></small></summary>
+          <div class="rules-toolbar"><button id="add-price-rule" class="button secondary" type="button" data-i18n="addRule"></button></div>
+          <div id="rules-wrap" class="table-wrap">
+            <table class="rules-table">
+              <thead><tr><th data-i18n="ruleName"></th><th data-i18n="provider"></th><th data-i18n="model"></th><th class="numeric" data-i18n="inputPerM"></th><th class="numeric" data-i18n="outputPerM"></th><th class="numeric" data-i18n="reasoningPerM"></th><th class="numeric" data-i18n="cacheReadPerM"></th><th class="numeric" data-i18n="cacheCreatePerM"></th><th data-i18n="cacheMode"></th><th data-i18n="reasoningMode"></th><th></th></tr></thead>
               <tbody id="price-rules-body"></tbody>
             </table>
           </div>
-          <div id="price-rules-empty" class="settings-empty hidden">No advanced rules. Every request uses the default price.</div>
+          <div id="price-rules-empty" class="empty hidden" data-i18n="noRules"></div>
         </details>
-
-        <div class="settings-actions">
+        <div class="actions">
           <div id="settings-status" class="status" role="status" aria-live="polite"></div>
-          <button id="save-settings" class="button" type="submit">Save billing settings</button>
+          <button id="save-settings" class="button" type="submit" data-i18n="saveBilling"></button>
         </div>
       </form>
-
-      <form id="filters" class="panel filters">
-        <label>Key ID<input id="filter-key" name="key_id" placeholder="SHA-256 key ID"></label>
-        <label>Provider<input id="filter-provider" name="provider" placeholder="codex"></label>
-        <label>Model<input id="filter-model" name="model" placeholder="gpt-5.4-mini"></label>
-        <label>From<input id="filter-from" name="from" type="datetime-local"></label>
-        <label>To<input id="filter-to" name="to" type="datetime-local"></label>
-        <div class="filter-actions">
-          <button class="button" type="submit">Apply</button>
-          <button id="reset-filters" class="button secondary" type="button">Reset</button>
-        </div>
-      </form>
-
-      <div class="cards">
-        <article class="panel card"><span class="card-label">Requests</span><strong id="metric-requests" class="card-value">0</strong><div id="metric-requests-meta" class="card-meta">0 success · 0 failed</div></article>
-        <article class="panel card"><span class="card-label">Input tokens</span><strong id="metric-input" class="card-value">0</strong><div class="card-meta">Provider reported</div></article>
-        <article class="panel card"><span class="card-label">Output tokens</span><strong id="metric-output" class="card-value">0</strong><div class="card-meta">Includes reasoning when reported</div></article>
-        <article class="panel card"><span class="card-label">Reasoning tokens</span><strong id="metric-reasoning" class="card-value">0</strong><div class="card-meta">Separated for pricing</div></article>
-        <article class="panel card"><span class="card-label">Cache tokens</span><strong id="metric-cache" class="card-value">0</strong><div class="card-meta">Read + creation</div></article>
-        <article class="panel card"><span class="card-label">Total cost</span><strong id="metric-cost" class="card-value">0</strong><div id="metric-cost-meta" class="card-meta">USD · configured prices</div></article>
-      </div>
-
-      <section class="panel section">
-        <div class="section-header"><h2>Usage by client key</h2><span id="keys-meta" class="section-meta"></span></div>
-        <div class="table-wrap"><table><thead><tr><th>Key</th><th class="numeric">Requests</th><th class="numeric">Input</th><th class="numeric">Output</th><th class="numeric">Reasoning</th><th class="numeric">Cost</th><th class="numeric">Limit</th><th class="numeric">Remaining</th><th>Status</th></tr></thead><tbody id="keys-body"></tbody></table></div>
-        <div id="keys-empty" class="empty hidden">No matching client key usage.</div>
-      </section>
-
-      <section class="panel section">
-        <div class="section-header"><h2>Usage by model</h2><span id="models-meta" class="section-meta"></span></div>
-        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th class="numeric">Requests</th><th class="numeric">Tokens</th><th class="numeric">Cost</th></tr></thead><tbody id="models-body"></tbody></table></div>
-        <div id="models-empty" class="empty hidden">No matching model usage.</div>
-      </section>
-
-      <section class="panel section">
-        <div class="section-header"><h2>Request ledger</h2><span id="events-meta" class="section-meta"></span></div>
-        <div class="table-wrap"><table><thead><tr><th>Time</th><th>Key</th><th>Provider / model</th><th>Status</th><th class="numeric">Input</th><th class="numeric">Output</th><th class="numeric">Reasoning</th><th class="numeric">Latency</th><th class="numeric">Cost</th></tr></thead><tbody id="events-body"></tbody></table></div>
-        <div id="events-empty" class="empty hidden">No matching billing events.</div>
-        <div class="pagination">
-          <button id="previous-page" class="button secondary" type="button">Previous</button>
-          <span id="page-meta">0–0 of 0</span>
-          <button id="next-page" class="button secondary" type="button">Next</button>
-        </div>
-      </section>
-
-      <div id="dashboard-status" class="status" role="status" aria-live="polite"></div>
     </section>
 
-    <footer class="footer">Only hashed IDs and masked key suffixes are displayed. Raw client API keys are never returned by the billing API.</footer>
+    <div id="dashboard-status" class="status" role="status" aria-live="polite"></div>
+    <footer class="footer" data-i18n="footer"></footer>
   </main>
 
   <script nonce="{{NONCE}}">
     (() => {
-      'use strict';
+      "use strict";
 
-      const state = { session: null, sessionSignature: '', limit: 50, offset: 0, loading: false, report: null, settings: null };
-      const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+      const en = {
+        title: "Per-key billing · CLIProxyAPI", heading: "Per-key billing", subtitle: "Name client keys, inspect usage, set prices, and enforce spend limits.",
+        refresh: "Refresh", waiting: "Connecting with the current Management Center session…", expired: "The Management Center session expired. Sign in again on the existing login page.", disabled: "Billing is disabled. Enable it in Billing settings to record new usage and enforce limits.",
+        tabKeys: "KEY management", tabUsage: "Usage details", tabSettings: "Billing settings",
+        requests: "Requests", totalTokens: "Total tokens", allTokenTypes: "Input, output, reasoning, and cache", totalCost: "Total cost", blockedKeys: "Stopped KEYs",
+        keyManagement: "Client KEY management", keyHint: "Use a clear name for daily management. A limit of 0 means unlimited; a KEY stops before the next request once its cumulative spend reaches the limit.", nameAndKey: "Name / KEY", tokens: "Tokens", spent: "Spent", limit: "Limit", remaining: "Remaining", status: "Status", noKeys: "Add client API keys in Management before configuring billing.", saveKeys: "Save names and limits", keyNamePlaceholder: "For example: Product team", showFull: "Show full KEY", hideFull: "Hide full KEY",
+        key: "KEY", provider: "Provider", model: "Model", from: "From", to: "To", apply: "Apply", reset: "Reset", allKeys: "All KEYs", unnamedKey: "Unnamed KEY", providerPlaceholder: "codex", modelPlaceholder: "gpt-5.4-mini",
+        matchedRequests: "Matched requests", matchedTokens: "Matched tokens", matchedCost: "Matched cost", usageByModel: "Usage by model", noModels: "No matching model usage.", requestLedger: "Request ledger", time: "Time", providerModel: "Provider / model", input: "Input", output: "Output", reasoning: "Reasoning", latency: "Latency", cost: "Cost", noEvents: "No matching billing events.", previous: "Previous", next: "Next",
+        billingSettings: "Billing settings", settingsHint: "The built-in fallback is 1 currency unit per 1M tokens. New prices affect new requests only.", enableBilling: "Enable billing", enableHint: "Record usage and enforce configured limits", defaultPrice: "Default price / 1M tokens", defaultPriceHint: "Used for every token category when no advanced rule matches.", syncEveryWrite: "Sync every write", syncHint: "Stronger durability with lower throughput", ledgerPath: "Ledger path", defaultLedger: "Default auth directory (billing.jsonl)",
+        advancedPrices: "Advanced provider/model prices", advancedHint: "Optional. First matching rule wins; the default price remains the fallback.", addRule: "Add price rule", ruleName: "Name", inputPerM: "Input / M", outputPerM: "Output / M", reasoningPerM: "Reasoning / M", cacheReadPerM: "Cache read / M", cacheCreatePerM: "Cache create / M", cacheMode: "Cache mode", reasoningMode: "Reasoning mode", noRules: "No advanced rules. Every request uses the default price.", remove: "Remove", auto: "Auto", included: "Included", additional: "Additional", saveBilling: "Save billing settings",
+        footer: "Short KEYs are shown in full. Long KEYs use a limited preview and can be revealed on demand with the current Management Center permission.",
+        active: "Active", blocked: "Stopped", unlimited: "Unlimited", success: "Success", failed: "Failed", configuredKeys: "{count} configured KEYs", blockedMeta: "{blocked} of {count} configured KEYs", requestsMeta: "{success} successful · {failed} failed", costMeta: "{currency} · default {price}/M", matchedMeta: "{matched} matched · {ledger} total events", pageMeta: "{start}–{end} of {total}", modelsMeta: "{count} models",
+        connecting: "Connecting…", refreshing: "Refreshing…", saving: "Saving…", updatedAt: "Updated {time}", savedAt: "Saved {time}", sessionUnavailable: "Management session unavailable.", loadFailed: "Unable to load billing data.", saveFailed: "Unable to save billing settings.", revealFailed: "Unable to reveal this KEY.", waitingError: "Waiting for the current Management Center session.", requestFailed: "Request failed with HTTP {status}", numberError: "{field} must be a finite, non-negative number.", nameError: "KEY names must not contain control characters or exceed 128 UTF-8 bytes.", keyLimitField: "KEY limit", defaultPriceField: "Default price", rulePriceField: "Rule {index} {field} price"
+      };
+      const zhCN = {
+        title: "分 KEY 计费 · CLIProxyAPI", heading: "分 KEY 计费", subtitle: "为客户端 KEY 命名、查看用量、配置价格并执行金额限额。",
+        refresh: "刷新", waiting: "正在连接当前管理中心会话…", expired: "管理中心会话已失效，请在原有登录页重新登录。", disabled: "计费功能当前未启用。请在“计费设置”中启用，以记录新用量并执行限额。",
+        tabKeys: "KEY 管理", tabUsage: "用量明细", tabSettings: "计费设置",
+        requests: "请求数", totalTokens: "Token 总量", allTokenTypes: "输入、输出、推理与缓存", totalCost: "总金额", blockedKeys: "已停用 KEY",
+        keyManagement: "客户端 KEY 管理", keyHint: "请用清晰名称进行日常管理。限额为 0 表示不限额；累计金额达到限额后，该 KEY 会在下一次请求前停止。", nameAndKey: "名称 / KEY", tokens: "Token", spent: "已用金额", limit: "金额限额", remaining: "剩余金额", status: "状态", noKeys: "请先在管理中心添加客户端 API KEY，再配置计费。", saveKeys: "保存名称和限额", keyNamePlaceholder: "例如：产品组", showFull: "查看完整 KEY", hideFull: "隐藏完整 KEY",
+        key: "KEY", provider: "提供商", model: "模型", from: "开始时间", to: "结束时间", apply: "应用", reset: "重置", allKeys: "全部 KEY", unnamedKey: "未命名 KEY", providerPlaceholder: "codex", modelPlaceholder: "gpt-5.4-mini",
+        matchedRequests: "匹配请求", matchedTokens: "匹配 Token", matchedCost: "匹配金额", usageByModel: "按模型统计", noModels: "没有匹配的模型用量。", requestLedger: "请求明细", time: "时间", providerModel: "提供商 / 模型", input: "输入", output: "输出", reasoning: "推理", latency: "耗时", cost: "金额", noEvents: "没有匹配的计费记录。", previous: "上一页", next: "下一页",
+        billingSettings: "计费设置", settingsHint: "内置默认价格为每 100 万 Token 计 1 个货币单位；新价格只影响之后的请求。", enableBilling: "启用计费", enableHint: "记录用量并执行已配置限额", defaultPrice: "默认价格 / 100 万 Token", defaultPriceHint: "没有匹配高级规则时，各类 Token 都按此价格计算。", syncEveryWrite: "每次写入同步落盘", syncHint: "提高断电数据可靠性，但会降低吞吐量", ledgerPath: "账本路径", defaultLedger: "默认认证目录（billing.jsonl）",
+        advancedPrices: "高级提供商 / 模型价格", advancedHint: "可选。按顺序使用第一条匹配规则，未匹配时仍用默认价格。", addRule: "添加价格规则", ruleName: "名称", inputPerM: "输入 / 百万", outputPerM: "输出 / 百万", reasoningPerM: "推理 / 百万", cacheReadPerM: "缓存读取 / 百万", cacheCreatePerM: "缓存创建 / 百万", cacheMode: "缓存模式", reasoningMode: "推理模式", noRules: "没有高级规则，所有请求均使用默认价格。", remove: "删除", auto: "自动", included: "已包含", additional: "额外计费", saveBilling: "保存计费设置",
+        footer: "短 KEY 直接完整显示；长 KEY 限制显示位数，可在当前管理权限下按需点击眼睛查看完整内容。",
+        active: "正常", blocked: "已停止", unlimited: "不限额", success: "成功", failed: "失败", configuredKeys: "共 {count} 个 KEY", blockedMeta: "{count} 个 KEY 中有 {blocked} 个已停止", requestsMeta: "成功 {success} · 失败 {failed}", costMeta: "{currency} · 默认 {price}/百万 Token", matchedMeta: "匹配 {matched} 条 · 账本共 {ledger} 条", pageMeta: "第 {start}–{end} 条，共 {total} 条", modelsMeta: "共 {count} 个模型",
+        connecting: "正在连接…", refreshing: "正在刷新…", saving: "正在保存…", updatedAt: "更新于 {time}", savedAt: "保存于 {time}", sessionUnavailable: "管理会话不可用。", loadFailed: "无法加载计费数据。", saveFailed: "无法保存计费设置。", revealFailed: "无法查看此 KEY。", waitingError: "正在等待当前管理中心会话。", requestFailed: "请求失败，HTTP {status}", numberError: "{field}必须是有限的非负数。", nameError: "KEY 名称不能包含控制字符，且 UTF-8 长度不能超过 128 字节。", keyLimitField: "KEY 限额", defaultPriceField: "默认价格", rulePriceField: "规则 {index} 的{field}价格"
+      };
+      const zhTW = {
+        title: "分 KEY 計費 · CLIProxyAPI", heading: "分 KEY 計費", subtitle: "為客戶端 KEY 命名、查看用量、設定價格並執行金額限額。",
+        refresh: "重新整理", waiting: "正在連線目前的管理中心工作階段…", expired: "管理中心工作階段已失效，請在原有登入頁重新登入。", disabled: "計費功能目前未啟用。請在「計費設定」中啟用，以記錄新用量並執行限額。",
+        tabKeys: "KEY 管理", tabUsage: "用量明細", tabSettings: "計費設定",
+        requests: "請求數", totalTokens: "Token 總量", allTokenTypes: "輸入、輸出、推理與快取", totalCost: "總金額", blockedKeys: "已停用 KEY",
+        keyManagement: "客戶端 KEY 管理", keyHint: "請用清楚名稱進行日常管理。限額為 0 表示不限額；累計金額達到限額後，該 KEY 會在下一次請求前停止。", nameAndKey: "名稱 / KEY", tokens: "Token", spent: "已用金額", limit: "金額限額", remaining: "剩餘金額", status: "狀態", noKeys: "請先在管理中心新增客戶端 API KEY，再設定計費。", saveKeys: "儲存名稱和限額", keyNamePlaceholder: "例如：產品組", showFull: "查看完整 KEY", hideFull: "隱藏完整 KEY",
+        key: "KEY", provider: "供應商", model: "模型", from: "開始時間", to: "結束時間", apply: "套用", reset: "重設", allKeys: "全部 KEY", unnamedKey: "未命名 KEY", providerPlaceholder: "codex", modelPlaceholder: "gpt-5.4-mini",
+        matchedRequests: "匹配請求", matchedTokens: "匹配 Token", matchedCost: "匹配金額", usageByModel: "按模型統計", noModels: "沒有匹配的模型用量。", requestLedger: "請求明細", time: "時間", providerModel: "供應商 / 模型", input: "輸入", output: "輸出", reasoning: "推理", latency: "耗時", cost: "金額", noEvents: "沒有匹配的計費記錄。", previous: "上一頁", next: "下一頁",
+        billingSettings: "計費設定", settingsHint: "內建預設價格為每 100 萬 Token 計 1 個貨幣單位；新價格只影響之後的請求。", enableBilling: "啟用計費", enableHint: "記錄用量並執行已設定限額", defaultPrice: "預設價格 / 100 萬 Token", defaultPriceHint: "沒有匹配進階規則時，各類 Token 都按此價格計算。", syncEveryWrite: "每次寫入同步至磁碟", syncHint: "提高斷電資料可靠性，但會降低吞吐量", ledgerPath: "帳本路徑", defaultLedger: "預設認證目錄（billing.jsonl）",
+        advancedPrices: "進階供應商 / 模型價格", advancedHint: "可選。依順序使用第一條匹配規則，未匹配時仍用預設價格。", addRule: "新增價格規則", ruleName: "名稱", inputPerM: "輸入 / 百萬", outputPerM: "輸出 / 百萬", reasoningPerM: "推理 / 百萬", cacheReadPerM: "快取讀取 / 百萬", cacheCreatePerM: "快取建立 / 百萬", cacheMode: "快取模式", reasoningMode: "推理模式", noRules: "沒有進階規則，所有請求均使用預設價格。", remove: "刪除", auto: "自動", included: "已包含", additional: "額外計費", saveBilling: "儲存計費設定",
+        footer: "短 KEY 直接完整顯示；長 KEY 限制顯示位數，可在目前管理權限下按需點擊眼睛查看完整內容。",
+        active: "正常", blocked: "已停止", unlimited: "不限額", success: "成功", failed: "失敗", configuredKeys: "共 {count} 個 KEY", blockedMeta: "{count} 個 KEY 中有 {blocked} 個已停止", requestsMeta: "成功 {success} · 失敗 {failed}", costMeta: "{currency} · 預設 {price}/百萬 Token", matchedMeta: "匹配 {matched} 條 · 帳本共 {ledger} 條", pageMeta: "第 {start}–{end} 條，共 {total} 條", modelsMeta: "共 {count} 個模型",
+        connecting: "正在連線…", refreshing: "正在重新整理…", saving: "正在儲存…", updatedAt: "更新於 {time}", savedAt: "儲存於 {time}", sessionUnavailable: "管理工作階段無法使用。", loadFailed: "無法載入計費資料。", saveFailed: "無法儲存計費設定。", revealFailed: "無法查看此 KEY。", waitingError: "正在等待目前的管理中心工作階段。", requestFailed: "請求失敗，HTTP {status}", numberError: "{field}必須是有限的非負數。", nameError: "KEY 名稱不能包含控制字元，且 UTF-8 長度不能超過 128 位元組。", keyLimitField: "KEY 限額", defaultPriceField: "預設價格", rulePriceField: "規則 {index} 的{field}價格"
+      };
+      const ru = {
+        title: "Тарификация по ключам · CLIProxyAPI", heading: "Тарификация по ключам", subtitle: "Названия ключей, расход, цены и жёсткие денежные лимиты.",
+        refresh: "Обновить", waiting: "Подключение к текущему сеансу центра управления…", expired: "Сеанс центра управления истёк. Войдите снова на существующей странице входа.", disabled: "Тарификация отключена. Включите её в настройках, чтобы учитывать новые запросы и применять лимиты.",
+        tabKeys: "Управление KEY", tabUsage: "Детали расхода", tabSettings: "Настройки",
+        requests: "Запросы", totalTokens: "Всего токенов", allTokenTypes: "Ввод, вывод, рассуждение и кэш", totalCost: "Общая сумма", blockedKeys: "Остановленные KEY",
+        keyManagement: "Управление клиентскими KEY", keyHint: "Задайте понятные имена. Лимит 0 означает отсутствие лимита; после достижения суммы следующий запрос KEY будет остановлен.", nameAndKey: "Имя / KEY", tokens: "Токены", spent: "Потрачено", limit: "Лимит", remaining: "Осталось", status: "Статус", noKeys: "Сначала добавьте клиентские API KEY в центре управления.", saveKeys: "Сохранить имена и лимиты", keyNamePlaceholder: "Например: продуктовая команда", showFull: "Показать полный KEY", hideFull: "Скрыть полный KEY",
+        key: "KEY", provider: "Провайдер", model: "Модель", from: "С", to: "По", apply: "Применить", reset: "Сбросить", allKeys: "Все KEY", unnamedKey: "KEY без имени", providerPlaceholder: "codex", modelPlaceholder: "gpt-5.4-mini",
+        matchedRequests: "Найденные запросы", matchedTokens: "Найденные токены", matchedCost: "Найденная сумма", usageByModel: "Расход по моделям", noModels: "Нет подходящих данных по моделям.", requestLedger: "Журнал запросов", time: "Время", providerModel: "Провайдер / модель", input: "Ввод", output: "Вывод", reasoning: "Рассуждение", latency: "Задержка", cost: "Сумма", noEvents: "Нет подходящих записей.", previous: "Назад", next: "Далее",
+        billingSettings: "Настройки тарификации", settingsHint: "Встроенная цена — 1 единица валюты за 1 млн токенов. Новые цены действуют только на новые запросы.", enableBilling: "Включить тарификацию", enableHint: "Учитывать расход и применять лимиты", defaultPrice: "Цена по умолчанию / 1 млн токенов", defaultPriceHint: "Применяется ко всем типам токенов, если расширенное правило не подошло.", syncEveryWrite: "Синхронизировать каждую запись", syncHint: "Надёжнее, но снижает пропускную способность", ledgerPath: "Путь журнала", defaultLedger: "Каталог авторизации по умолчанию (billing.jsonl)",
+        advancedPrices: "Расширенные цены провайдеров и моделей", advancedHint: "Необязательно. Используется первое совпавшее правило, иначе цена по умолчанию.", addRule: "Добавить правило", ruleName: "Название", inputPerM: "Ввод / млн", outputPerM: "Вывод / млн", reasoningPerM: "Рассуждение / млн", cacheReadPerM: "Чтение кэша / млн", cacheCreatePerM: "Создание кэша / млн", cacheMode: "Режим кэша", reasoningMode: "Режим рассуждения", noRules: "Расширенных правил нет. Все запросы используют цену по умолчанию.", remove: "Удалить", auto: "Авто", included: "Включено", additional: "Дополнительно", saveBilling: "Сохранить настройки",
+        footer: "Короткие KEY показываются полностью. Длинные сокращаются и раскрываются по запросу с текущими правами управления.",
+        active: "Активен", blocked: "Остановлен", unlimited: "Без лимита", success: "Успех", failed: "Ошибка", configuredKeys: "Настроено KEY: {count}", blockedMeta: "Остановлено {blocked} из {count}", requestsMeta: "Успешно {success} · ошибок {failed}", costMeta: "{currency} · по умолчанию {price}/млн", matchedMeta: "Найдено {matched} · всего {ledger}", pageMeta: "{start}–{end} из {total}", modelsMeta: "Моделей: {count}",
+        connecting: "Подключение…", refreshing: "Обновление…", saving: "Сохранение…", updatedAt: "Обновлено {time}", savedAt: "Сохранено {time}", sessionUnavailable: "Сеанс управления недоступен.", loadFailed: "Не удалось загрузить данные.", saveFailed: "Не удалось сохранить настройки.", revealFailed: "Не удалось раскрыть KEY.", waitingError: "Ожидание текущего сеанса управления.", requestFailed: "Ошибка запроса HTTP {status}", numberError: "Поле «{field}» должно быть конечным неотрицательным числом.", nameError: "Имя KEY не должно содержать управляющие символы и превышать 128 байт UTF-8.", keyLimitField: "Лимит KEY", defaultPriceField: "Цена по умолчанию", rulePriceField: "Правило {index}: цена {field}"
+      };
+
+      const dictionaries = { en: en, "zh-CN": zhCN, "zh-TW": zhTW, ru: ru };
+      const state = {
+        session: null, sessionSignature: "", language: "en", limit: 50, offset: 0,
+        loading: false, overview: null, report: null, settings: null, revealedKeys: new Map()
+      };
       const byId = (id) => document.getElementById(id);
-      const setText = (id, value) => { byId(id).textContent = value; };
+
+      function languageKey(value) {
+        const language = String(value || "").toLowerCase();
+        if (language.startsWith("zh-tw") || language.startsWith("zh-hk") || language.startsWith("zh-hant")) return "zh-TW";
+        if (language.startsWith("zh")) return "zh-CN";
+        if (language.startsWith("ru")) return "ru";
+        return "en";
+      }
+
+      function t(key, variables) {
+        let value = (dictionaries[state.language] || en)[key] || en[key] || key;
+        Object.entries(variables || {}).forEach(([name, replacement]) => {
+          value = value.split("{" + name + "}").join(String(replacement));
+        });
+        return value;
+      }
+
+      function applyLanguage(value) {
+        const next = languageKey(value);
+        if (state.language === next && document.documentElement.dataset.billingLanguageApplied === "true") return;
+        state.language = next;
+        document.documentElement.dataset.billingLanguageApplied = "true";
+        document.documentElement.lang = next;
+        document.title = t("title");
+        document.querySelector(".tabs").setAttribute("aria-label", t("heading"));
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          element.textContent = t(element.dataset.i18n);
+        });
+        document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+          element.placeholder = t(element.dataset.i18nPlaceholder);
+        });
+        if (state.settings) translateDynamicControls();
+        if (state.overview) renderOverview(state.overview, false);
+        if (state.report) renderUsage(state.report);
+      }
 
       function formatNumber(value) {
-        return numberFormat.format(Number(value || 0));
+        return new Intl.NumberFormat(state.language, { maximumFractionDigits: 0 }).format(Number(value || 0));
       }
 
-      function formatCost(cost, currency) {
-        if (!cost) return `0 ${currency || ''}`.trim();
-        return `${cost.total || '0.000000000'} ${cost.currency || currency || ''}`.trim();
+      function formatDecimal(value, maximumFractionDigits) {
+        const number = Number(value || 0);
+        if (!Number.isFinite(number)) return String(value || 0);
+        return new Intl.NumberFormat(state.language, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: maximumFractionDigits == null ? 9 : maximumFractionDigits
+        }).format(number);
       }
 
-      function formatAmount(value, currency) {
-        return `${value || '0.000000000'} ${currency || ''}`.trim();
+      function formatMoney(value, currency) {
+        return String(currency || "USD") + " " + formatDecimal(value, 9);
       }
 
       function localRFC3339(value) {
-        if (!value) return '';
+        if (!value) return "";
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-      }
-
-      function cell(row, value, className) {
-        const td = document.createElement('td');
-        if (className) td.className = className;
-        td.textContent = value;
-        row.appendChild(td);
-        return td;
-      }
-
-      function fieldInput(type, value, field, options = {}) {
-        const input = document.createElement('input');
-        input.type = type;
-        input.value = value ?? '';
-        input.dataset.field = field;
-        if (options.className) input.className = options.className;
-        if (options.placeholder) input.placeholder = options.placeholder;
-        if (options.min !== undefined) input.min = String(options.min);
-        if (options.step !== undefined) input.step = String(options.step);
-        if (options.required) input.required = true;
-        return input;
-      }
-
-      function selectField(value, field) {
-        const select = document.createElement('select');
-        select.dataset.field = field;
-        ['auto', 'included', 'additional'].forEach((mode) => {
-          const option = document.createElement('option');
-          option.value = mode;
-          option.textContent = mode;
-          option.selected = (value || 'auto') === mode;
-          select.appendChild(option);
-        });
-        return select;
-      }
-
-      function controlCell(row, control, className) {
-        const td = cell(row, '', className);
-        td.appendChild(control);
-        return td;
-      }
-
-      function replaceRows(bodyID, emptyID, values, makeRow) {
-        const body = byId(bodyID);
-        body.replaceChildren();
-        const fragment = document.createDocumentFragment();
-        values.forEach((value) => fragment.appendChild(makeRow(value)));
-        body.appendChild(fragment);
-        byId(emptyID).classList.toggle('hidden', values.length !== 0);
-        body.parentElement.classList.toggle('hidden', values.length === 0);
+        return Number.isNaN(date.getTime()) ? "" : date.toISOString();
       }
 
       function setStatus(target, message, kind) {
         const element = byId(target);
-        element.textContent = message || '';
-        element.className = `status${kind ? ` ${kind}` : ''}`;
+        element.textContent = message || "";
+        element.className = "status" + (kind ? " " + kind : "");
       }
 
       function setLoading(loading) {
         state.loading = loading;
-        document.querySelectorAll('button').forEach((button) => {
+        document.querySelectorAll("button:not(.reveal-button)").forEach((button) => {
           button.disabled = loading;
         });
+        updatePagination();
       }
 
       function showSessionNotice(message, kind) {
-        const notice = byId('session-notice');
+        const notice = byId("session-notice");
         notice.textContent = message;
-        notice.className = `notice session-notice${kind ? ` ${kind}` : ''}`;
-        notice.classList.remove('hidden');
+        notice.className = "notice" + (kind ? " " + kind : "");
+        notice.classList.remove("hidden");
       }
 
       function reportAuthFailure() {
         state.session = null;
-        state.sessionSignature = '';
-        showSessionNotice('The Management Center session expired. Sign in again from the existing login page.', 'error');
-        window.parent.postMessage({ type: 'cpa-billing-auth-invalid' }, window.location.origin);
+        state.sessionSignature = "";
+        showSessionNotice(t("expired"), "error");
+        window.parent.postMessage({ type: "cpa-billing-auth-invalid" }, window.location.origin);
       }
 
-      function queryParameters() {
-        const params = new URLSearchParams();
-        const fields = [
-          ['key_id', byId('filter-key').value.trim()],
-          ['provider', byId('filter-provider').value.trim()],
-          ['model', byId('filter-model').value.trim()],
-          ['from', localRFC3339(byId('filter-from').value)],
-          ['to', localRFC3339(byId('filter-to').value)],
-        ];
-        fields.forEach(([name, value]) => { if (value) params.set(name, value); });
-        params.set('limit', String(state.limit));
-        params.set('offset', String(state.offset));
-        return params;
-      }
-
-      async function requestJSON(path, options = {}) {
+      async function requestJSON(path, options) {
+        const requestOptions = options || {};
         if (!state.session) {
-          const error = new Error('Waiting for the current Management Center session.');
+          const error = new Error(t("waitingError"));
           error.status = 401;
           throw error;
         }
-        const headers = { Accept: 'application/json' };
+        const headers = { Accept: "application/json" };
         headers[state.session.headerName] = state.session.headerValue;
-        if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-        const response = await fetch(`${state.session.apiBase}${path}`, {
-          method: options.method || 'GET',
-          headers,
-          body: options.body,
-          cache: 'no-store',
-          credentials: 'same-origin',
+        if (requestOptions.body !== undefined) headers["Content-Type"] = "application/json";
+        const response = await fetch(state.session.apiBase + path, {
+          method: requestOptions.method || "GET",
+          headers: headers,
+          body: requestOptions.body,
+          cache: "no-store",
+          credentials: "same-origin"
         });
         let payload = null;
         try { payload = await response.json(); } catch (_) { payload = null; }
         if (!response.ok) {
-          const serverMessage = payload?.message || payload?.error?.message || (typeof payload?.error === 'string' ? payload.error : '');
-          const error = new Error(serverMessage || `Request failed with HTTP ${response.status}`);
+          const serverMessage = payload && (payload.message || (payload.error && payload.error.message) || (typeof payload.error === "string" ? payload.error : ""));
+          const error = new Error(serverMessage || t("requestFailed", { status: response.status }));
           error.status = response.status;
           throw error;
         }
         return payload;
       }
 
+      function queryParameters() {
+        const params = new URLSearchParams();
+        const fields = [
+          ["key_id", byId("filter-key").value],
+          ["provider", byId("filter-provider").value.trim()],
+          ["model", byId("filter-model").value.trim()],
+          ["from", localRFC3339(byId("filter-from").value)],
+          ["to", localRFC3339(byId("filter-to").value)]
+        ];
+        fields.forEach(([name, value]) => { if (value) params.set(name, value); });
+        params.set("limit", String(state.limit));
+        params.set("offset", String(state.offset));
+        return params;
+      }
+
+      function fetchOverview() {
+        return requestJSON("/billing/usage?limit=1&offset=0");
+      }
+
       function fetchReport() {
-        return requestJSON(`/billing/usage?${queryParameters()}`);
+        return requestJSON("/billing/usage?" + queryParameters().toString());
       }
 
       function fetchSettings() {
-        return requestJSON('/billing/settings');
+        return requestJSON("/billing/settings");
       }
 
-      function quotaBadge(quota) {
-        const badge = document.createElement('span');
-        if (quota?.blocked) {
-          badge.className = 'badge blocked';
-          badge.textContent = 'Blocked';
-        } else if (quota?.limited) {
-          badge.className = 'badge';
-          badge.textContent = 'Active';
+      function cell(row, value, className, label) {
+        const td = document.createElement("td");
+        if (className) td.className = className;
+        if (label) td.dataset.label = label;
+        td.textContent = value == null ? "" : String(value);
+        row.appendChild(td);
+        return td;
+      }
+
+      function badge(quota) {
+        const element = document.createElement("span");
+        if (quota && quota.blocked) {
+          element.className = "badge blocked";
+          element.textContent = t("blocked");
+        } else if (quota && quota.limited) {
+          element.className = "badge";
+          element.textContent = t("active");
         } else {
-          badge.className = 'badge unlimited';
-          badge.textContent = 'Unlimited';
+          element.className = "badge unlimited";
+          element.textContent = t("unlimited");
         }
-        return badge;
+        return element;
       }
 
-      function renderKeySettings(settings) {
-        const keys = Array.isArray(settings.keys) ? settings.keys : [];
-        const body = byId('settings-keys-body');
-        body.replaceChildren();
-        const fragment = document.createDocumentFragment();
+      function keyName(key) {
+        return String(key.name || key.label || "").trim();
+      }
+
+      function keyOptionText(key) {
+        const name = keyName(key) || t("unnamedKey");
+        return name + " · " + (key.key_preview || key.key_mask || "");
+      }
+
+      function keyDisplayText(keyID, fallbackName, fallbackMask) {
+        const keys = state.settings && Array.isArray(state.settings.keys) ? state.settings.keys : [];
+        const activeKey = keys.find((key) => key.key_id === keyID);
+        if (activeKey) return keyName(activeKey) || activeKey.key_preview || activeKey.key_mask || t("unnamedKey");
+        return fallbackName || fallbackMask || t("unnamedKey");
+      }
+
+      function renderKeyFilter(keys) {
+        const select = byId("filter-key");
+        const selected = select.value;
+        select.replaceChildren();
+        const all = document.createElement("option");
+        all.value = "";
+        all.textContent = t("allKeys");
+        select.appendChild(all);
         keys.forEach((key) => {
-          const row = document.createElement('tr');
-          row.className = 'key-setting-row';
-          row.dataset.keyId = key.key_id || '';
-          const keyCell = cell(row, '');
-          const keyName = document.createElement('strong');
-          keyName.textContent = key.key_mask || 'masked key';
-          const keyID = document.createElement('span');
-          keyID.className = 'key-id';
-          keyID.title = key.key_id || '';
-          keyID.textContent = key.key_id || '';
-          keyCell.append(keyName, keyID);
-          controlCell(row, fieldInput('text', key.label || '', 'label', { placeholder: 'Optional label' }));
-          cell(row, formatAmount(key.spent, settings.currency), 'numeric');
-          controlCell(row, fieldInput('number', Number(key.limit || 0), 'limit', { className: 'limit-input', min: 0, step: 0.000001, required: true }), 'numeric');
-          cell(row, key.limited ? formatAmount(key.remaining, settings.currency) : 'Unlimited', 'numeric');
-          const statusCell = cell(row, '');
-          statusCell.appendChild(quotaBadge(key));
-          fragment.appendChild(row);
+          const option = document.createElement("option");
+          option.value = key.key_id || "";
+          option.textContent = keyOptionText(key);
+          select.appendChild(option);
         });
-        body.appendChild(fragment);
-        setText('settings-keys-meta', `${formatNumber(keys.length)} configured ${keys.length === 1 ? 'key' : 'keys'}`);
-        byId('settings-keys-empty').classList.toggle('hidden', keys.length !== 0);
-        body.closest('.table-wrap').classList.toggle('hidden', keys.length === 0);
+        if (Array.from(select.options).some((option) => option.value === selected)) select.value = selected;
       }
 
-      function appendPriceRule(rule = {}) {
-        const body = byId('price-rules-body');
-        const row = document.createElement('tr');
-        row.className = 'price-rule-row';
-        controlCell(row, fieldInput('text', rule.name || '', 'name', { placeholder: 'rule name' }));
-        controlCell(row, fieldInput('text', rule.provider || '*', 'provider', { className: 'pattern-input', placeholder: '*' }));
-        controlCell(row, fieldInput('text', rule.model || '*', 'model', { className: 'pattern-input', placeholder: '*' }));
-        [
-          ['input-per-million', rule['input-per-million']],
-          ['output-per-million', rule['output-per-million']],
-          ['reasoning-per-million', rule['reasoning-per-million']],
-          ['cache-read-per-million', rule['cache-read-per-million']],
-          ['cache-creation-per-million', rule['cache-creation-per-million']],
-        ].forEach(([field, value]) => {
-          controlCell(row, fieldInput('number', Number(value || 0), field, { className: 'limit-input', min: 0, step: 0.000001, required: true }), 'numeric');
+      function translateDynamicControls() {
+        const settings = state.settings;
+        const keys = Array.isArray(settings.keys) ? settings.keys : [];
+        const labels = [t("nameAndKey"), t("requests"), t("tokens"), t("spent"), t("limit"), t("remaining"), t("status")];
+        document.querySelectorAll(".key-setting-row").forEach((row) => {
+          Array.from(row.children).forEach((cell, index) => { cell.dataset.label = labels[index] || ""; });
+          const key = keys.find((item) => item.key_id === row.dataset.keyId);
+          const nameInput = row.querySelector(".key-name-input");
+          if (nameInput) nameInput.placeholder = t("keyNamePlaceholder");
+          const reveal = row.querySelector(".reveal-button");
+          if (reveal && key) {
+            reveal.title = state.revealedKeys.has(key.key_id) ? t("hideFull") : t("showFull");
+            reveal.setAttribute("aria-label", reveal.title);
+          }
+          if (key) {
+            if (!key.limited && row.children[5]) row.children[5].textContent = t("unlimited");
+            const status = row.querySelector(".badge");
+            if (status) status.replaceWith(badge(key));
+          }
         });
-        controlCell(row, selectField(rule['input-cache-mode'], 'input-cache-mode'));
-        controlCell(row, selectField(rule['reasoning-mode'], 'reasoning-mode'));
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'remove-rule';
-        remove.textContent = 'Remove';
-        remove.addEventListener('click', () => {
+        byId("key-count").textContent = t("configuredKeys", { count: formatNumber(keys.length) });
+        renderKeyFilter(keys);
+        if (!settings.store_path) byId("settings-store-path").textContent = t("defaultLedger");
+        document.querySelectorAll(".remove-rule").forEach((button) => { button.textContent = t("remove"); });
+        document.querySelectorAll('.price-rule-row select[data-field="input-cache-mode"], .price-rule-row select[data-field="reasoning-mode"]').forEach((select) => {
+          Array.from(select.options).forEach((option) => { option.textContent = t(option.value); });
+        });
+        setStatus("key-status", "");
+        setStatus("settings-status", "");
+        setStatus("dashboard-status", "");
+      }
+
+      function usageByKeyID() {
+        const result = new Map();
+        const values = state.overview && Array.isArray(state.overview.by_key) ? state.overview.by_key : [];
+        values.forEach((value) => result.set(value.key_id || "", value));
+        return result;
+      }
+
+      function revealIcon(hidden) {
+        return hidden
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 3 18 18"/><path d="M10.7 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-2.1 2.8M6.2 6.2C3.8 7.8 2.5 12 2.5 12s3.5 6 9.5 6c1.5 0 2.8-.4 4-.9"/><path d="M10.2 10.2a2.5 2.5 0 0 0 3.6 3.6"/></svg>';
+      }
+
+      async function toggleReveal(button, key, valueElement) {
+        const keyID = key.key_id || "";
+        if (state.revealedKeys.has(keyID)) {
+          state.revealedKeys.delete(keyID);
+          valueElement.textContent = key.key_preview || key.key_mask || "";
+          valueElement.classList.remove("revealed");
+          button.innerHTML = revealIcon(true);
+          button.title = t("showFull");
+          button.setAttribute("aria-label", t("showFull"));
+          return;
+        }
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        try {
+          const payload = await requestJSON("/billing/keys/" + encodeURIComponent(keyID) + "/reveal", { method: "POST" });
+          if (!payload || typeof payload.key !== "string") throw new Error(t("revealFailed"));
+          state.revealedKeys.set(keyID, payload.key);
+          valueElement.textContent = payload.key;
+          valueElement.classList.add("revealed");
+          button.innerHTML = revealIcon(false);
+          button.title = t("hideFull");
+          button.setAttribute("aria-label", t("hideFull"));
+        } catch (error) {
+          if (error.status === 401 || error.status === 403) reportAuthFailure();
+          setStatus("key-status", error.message || t("revealFailed"), "error");
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      }
+
+      function renderKeys(settings) {
+        const keys = Array.isArray(settings.keys) ? settings.keys : [];
+        const usage = usageByKeyID();
+        const body = byId("key-body");
+        body.replaceChildren();
+        keys.forEach((key) => {
+          const summary = usage.get(key.key_id || "") || {};
+          const totals = summary.tokens || {};
+          const row = document.createElement("tr");
+          row.className = "key-setting-row";
+          row.dataset.keyId = key.key_id || "";
+
+          const identity = cell(row, "", "identity", t("nameAndKey"));
+          const nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.className = "key-name-input";
+          nameInput.dataset.field = "name";
+          nameInput.value = keyName(key);
+          nameInput.placeholder = t("keyNamePlaceholder");
+          nameInput.autocomplete = "off";
+          const keyLine = document.createElement("div");
+          keyLine.className = "key-line";
+          const keyValue = document.createElement("code");
+          keyValue.className = "key-value";
+          const revealedKey = state.revealedKeys.get(key.key_id || "");
+          keyValue.textContent = revealedKey || key.key_preview || key.key_mask || "";
+          keyValue.classList.toggle("revealed", Boolean(revealedKey));
+          keyLine.appendChild(keyValue);
+          if (key.key_truncated) {
+            const reveal = document.createElement("button");
+            reveal.type = "button";
+            reveal.className = "reveal-button";
+            const revealed = state.revealedKeys.has(key.key_id || "");
+            reveal.innerHTML = revealIcon(!revealed);
+            reveal.title = revealed ? t("hideFull") : t("showFull");
+            reveal.setAttribute("aria-label", reveal.title);
+            reveal.addEventListener("click", () => toggleReveal(reveal, key, keyValue));
+            keyLine.appendChild(reveal);
+          }
+          identity.append(nameInput, keyLine);
+
+          cell(row, formatNumber(summary.requests), "numeric", t("requests"));
+          cell(row, formatNumber(totals.total_tokens), "numeric", t("tokens"));
+          cell(row, formatMoney(key.spent, settings.currency), "numeric", t("spent"));
+          const limitCell = cell(row, "", "numeric", t("limit"));
+          const limitInput = document.createElement("input");
+          limitInput.type = "number";
+          limitInput.className = "limit-input";
+          limitInput.dataset.field = "limit";
+          limitInput.min = "0";
+          limitInput.step = "0.000001";
+          limitInput.inputMode = "decimal";
+          limitInput.required = true;
+          limitInput.value = Number(key.limit || 0);
+          limitCell.appendChild(limitInput);
+          cell(row, key.limited ? formatMoney(key.remaining, settings.currency) : t("unlimited"), "numeric", t("remaining"));
+          const status = cell(row, "", "", t("status"));
+          status.appendChild(badge(key));
+          body.appendChild(row);
+        });
+        byId("key-count").textContent = t("configuredKeys", { count: formatNumber(keys.length) });
+        byId("key-empty").classList.toggle("hidden", keys.length !== 0);
+        byId("key-table-wrap").classList.toggle("hidden", keys.length === 0);
+        renderKeyFilter(keys);
+      }
+
+      function renderOverview(report, refreshKeys) {
+        state.overview = report;
+        const totals = report.totals || {};
+        const tokens = totals.tokens || {};
+        const configured = state.settings && Array.isArray(state.settings.keys) ? state.settings.keys : [];
+        const blocked = configured.filter((key) => key.blocked).length;
+        byId("overview-requests").textContent = formatNumber(totals.requests);
+        byId("overview-requests-meta").textContent = t("requestsMeta", { success: formatNumber(totals.success), failed: formatNumber(totals.failed) });
+        byId("overview-tokens").textContent = formatNumber(tokens.total_tokens);
+        byId("overview-cost").textContent = formatMoney(totals.cost && totals.cost.total, report.currency);
+        byId("overview-cost-meta").textContent = t("costMeta", { currency: report.currency || "USD", price: formatDecimal(report.default_price_per_million, 6) });
+        byId("overview-blocked").textContent = formatNumber(blocked);
+        byId("overview-blocked-meta").textContent = t("blockedMeta", { blocked: formatNumber(blocked), count: formatNumber(configured.length) });
+        byId("billing-disabled").classList.toggle("hidden", report.enabled !== false);
+        if (refreshKeys !== false && state.settings) renderKeys(state.settings);
+      }
+
+      function replaceRows(bodyID, emptyID, values, makeRow) {
+        const body = byId(bodyID);
+        body.replaceChildren();
+        values.forEach((value) => body.appendChild(makeRow(value)));
+        byId(emptyID).classList.toggle("hidden", values.length !== 0);
+        body.closest(".table-wrap").classList.toggle("hidden", values.length === 0);
+      }
+
+      function renderUsage(report) {
+        state.report = report;
+        const totals = report.totals || {};
+        byId("usage-requests").textContent = formatNumber(totals.requests);
+        byId("usage-tokens").textContent = formatNumber(totals.tokens && totals.tokens.total_tokens);
+        byId("usage-cost").textContent = formatMoney(totals.cost && totals.cost.total, report.currency);
+
+        const models = Array.isArray(report.by_model) ? report.by_model : [];
+        byId("models-meta").textContent = t("modelsMeta", { count: formatNumber(models.length) });
+        replaceRows("models-body", "models-empty", models, (model) => {
+          const row = document.createElement("tr");
+          cell(row, model.provider || "—");
+          cell(row, model.model || "—");
+          cell(row, formatNumber(model.requests), "numeric");
+          cell(row, formatNumber(model.tokens && model.tokens.total_tokens), "numeric");
+          cell(row, formatMoney(model.cost && model.cost.total, report.currency), "numeric");
+          return row;
+        });
+
+        const events = Array.isArray(report.events) ? report.events : [];
+        const matched = Number(report.matched_events || 0);
+        const start = events.length ? state.offset + 1 : 0;
+        const end = state.offset + events.length;
+        byId("events-meta").textContent = t("matchedMeta", { matched: formatNumber(matched), ledger: formatNumber(report.ledger_events) });
+        byId("page-meta").textContent = t("pageMeta", { start: formatNumber(start), end: formatNumber(end), total: formatNumber(matched) });
+        replaceRows("events-body", "events-empty", events, (event) => {
+          const row = document.createElement("tr");
+          cell(row, new Date(event.timestamp).toLocaleString(state.language));
+          cell(row, keyDisplayText(event.key_id, event.key_label, event.key_mask));
+          cell(row, (event.provider || "—") + " / " + (event.model || "—"));
+          const statusCell = cell(row, "");
+          const status = document.createElement("span");
+          status.className = "badge" + (event.failed ? " blocked" : "");
+          status.textContent = (event.failed ? t("failed") : t("success")) + (event.status_code ? " " + event.status_code : "");
+          statusCell.appendChild(status);
+          cell(row, formatNumber(event.tokens && event.tokens.input_tokens), "numeric");
+          cell(row, formatNumber(event.tokens && event.tokens.output_tokens), "numeric");
+          cell(row, formatNumber(event.tokens && event.tokens.reasoning_tokens), "numeric");
+          cell(row, formatNumber(event.latency_ms) + " ms", "numeric");
+          cell(row, formatMoney(event.cost && event.cost.total, report.currency), "numeric");
+          return row;
+        });
+        updatePagination();
+      }
+
+      function updatePagination() {
+        if (!state.report) return;
+        const events = Array.isArray(state.report.events) ? state.report.events : [];
+        const end = state.offset + events.length;
+        byId("previous-page").disabled = state.loading || state.offset === 0;
+        byId("next-page").disabled = state.loading || end >= Number(state.report.matched_events || 0);
+      }
+
+      function priceInput(value, field) {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.step = "0.000001";
+        input.required = true;
+        input.dataset.field = field;
+        input.value = Number(value || 0);
+        return input;
+      }
+
+      function textInput(value, field, placeholder) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.dataset.field = field;
+        input.value = value || "";
+        input.placeholder = placeholder || "";
+        return input;
+      }
+
+      function modeSelect(value, field) {
+        const select = document.createElement("select");
+        select.dataset.field = field;
+        ["auto", "included", "additional"].forEach((mode) => {
+          const option = document.createElement("option");
+          option.value = mode;
+          option.textContent = t(mode);
+          option.selected = (value || "auto") === mode;
+          select.appendChild(option);
+        });
+        return select;
+      }
+
+      function controlCell(row, control, className) {
+        const target = cell(row, "", className);
+        target.appendChild(control);
+      }
+
+      function appendPriceRule(rule) {
+        const value = rule || {};
+        const row = document.createElement("tr");
+        row.className = "price-rule-row";
+        controlCell(row, textInput(value.name, "name", t("ruleName")));
+        controlCell(row, textInput(value.provider || "*", "provider", "*"));
+        controlCell(row, textInput(value.model || "*", "model", "*"));
+        [
+          ["input-per-million", value["input-per-million"]],
+          ["output-per-million", value["output-per-million"]],
+          ["reasoning-per-million", value["reasoning-per-million"]],
+          ["cache-read-per-million", value["cache-read-per-million"]],
+          ["cache-creation-per-million", value["cache-creation-per-million"]]
+        ].forEach(([field, amount]) => controlCell(row, priceInput(amount, field), "numeric"));
+        controlCell(row, modeSelect(value["input-cache-mode"], "input-cache-mode"));
+        controlCell(row, modeSelect(value["reasoning-mode"], "reasoning-mode"));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "remove-rule";
+        remove.textContent = t("remove");
+        remove.addEventListener("click", () => {
           row.remove();
-          updatePriceRulesEmptyState();
+          updateRulesEmptyState();
         });
         controlCell(row, remove);
-        body.appendChild(row);
-        updatePriceRulesEmptyState();
+        byId("price-rules-body").appendChild(row);
+        updateRulesEmptyState();
       }
 
-      function updatePriceRulesEmptyState() {
-        const count = byId('price-rules-body').children.length;
-        byId('price-rules-empty').classList.toggle('hidden', count !== 0);
-        byId('price-rules-body').closest('.table-wrap').classList.toggle('hidden', count === 0);
+      function updateRulesEmptyState() {
+        const empty = byId("price-rules-body").children.length === 0;
+        byId("price-rules-empty").classList.toggle("hidden", !empty);
+        byId("rules-wrap").classList.toggle("hidden", empty);
       }
 
       function renderPriceRules(prices) {
-        byId('price-rules-body').replaceChildren();
+        byId("price-rules-body").replaceChildren();
         (Array.isArray(prices) ? prices : []).forEach((rule) => appendPriceRule(rule));
-        updatePriceRulesEmptyState();
+        updateRulesEmptyState();
+      }
+
+      function renderBillingControls(settings) {
+        byId("settings-enabled").checked = settings.enabled === true;
+        byId("settings-sync").checked = settings.sync_on_write === true;
+        byId("settings-default-price").value = Number(settings.default_price_per_million == null ? 1 : settings.default_price_per_million);
+        byId("settings-currency").textContent = settings.currency || "USD";
+        byId("settings-store-path").textContent = settings.store_path || t("defaultLedger");
+        renderPriceRules(settings.prices);
       }
 
       function renderSettings(settings) {
         state.settings = settings;
-        byId('settings-enabled').checked = settings.enabled === true;
-        byId('settings-sync').checked = settings.sync_on_write === true;
-        byId('settings-default-price').value = Number(settings.default_price_per_million ?? 1);
-        setText('settings-currency', settings.currency || 'USD');
-        setText('settings-store-path', settings.store_path || 'Default auth directory (billing.jsonl)');
-        renderKeySettings(settings);
-        renderPriceRules(settings.prices);
+        state.revealedKeys.clear();
+        renderBillingControls(settings);
+        renderKeys(settings);
       }
 
-      function nonNegativeNumber(input, label) {
+      function nonNegativeNumber(input, field) {
         const value = input.valueAsNumber;
         if (!Number.isFinite(value) || value < 0) {
           input.focus();
-          throw new Error(`${label} must be a finite, non-negative number.`);
+          throw new Error(t("numberError", { field: field }));
         }
         return value;
       }
 
-      function collectPriceRules() {
-        return Array.from(document.querySelectorAll('.price-rule-row')).map((row, index) => {
-          const value = (field) => row.querySelector(`[data-field="${field}"]`);
+      function validateName(input) {
+        const value = input.value.trim();
+        const invalidControl = /[\u0000-\u001f\u007f-\u009f]/.test(value);
+        if (invalidControl || new TextEncoder().encode(value).length > 128) {
+          input.focus();
+          throw new Error(t("nameError"));
+        }
+        return value;
+      }
+
+      function collectKeys() {
+        return Array.from(document.querySelectorAll(".key-setting-row")).map((row) => ({
+          key_id: row.dataset.keyId,
+          name: validateName(row.querySelector('[data-field="name"]')),
+          limit: nonNegativeNumber(row.querySelector('[data-field="limit"]'), t("keyLimitField"))
+        }));
+      }
+
+      function persistedKeys() {
+        return (state.settings && Array.isArray(state.settings.keys) ? state.settings.keys : []).map((key) => ({
+          key_id: key.key_id,
+          name: keyName(key),
+          limit: Number(key.limit || 0)
+        }));
+      }
+
+      function collectPrices() {
+        return Array.from(document.querySelectorAll(".price-rule-row")).map((row, index) => {
+          const field = (name) => row.querySelector('[data-field="' + name + '"]');
+          const price = (name, label) => nonNegativeNumber(field(name), t("rulePriceField", { index: index + 1, field: label }));
           return {
-            name: value('name').value.trim(),
-            provider: value('provider').value.trim() || '*',
-            model: value('model').value.trim() || '*',
-            'input-per-million': nonNegativeNumber(value('input-per-million'), `Rule ${index + 1} input price`),
-            'output-per-million': nonNegativeNumber(value('output-per-million'), `Rule ${index + 1} output price`),
-            'reasoning-per-million': nonNegativeNumber(value('reasoning-per-million'), `Rule ${index + 1} reasoning price`),
-            'cache-read-per-million': nonNegativeNumber(value('cache-read-per-million'), `Rule ${index + 1} cache-read price`),
-            'cache-creation-per-million': nonNegativeNumber(value('cache-creation-per-million'), `Rule ${index + 1} cache-creation price`),
-            'input-cache-mode': value('input-cache-mode').value,
-            'reasoning-mode': value('reasoning-mode').value,
+            name: field("name").value.trim(),
+            provider: field("provider").value.trim() || "*",
+            model: field("model").value.trim() || "*",
+            "input-per-million": price("input-per-million", t("input")),
+            "output-per-million": price("output-per-million", t("output")),
+            "reasoning-per-million": price("reasoning-per-million", t("reasoning")),
+            "cache-read-per-million": price("cache-read-per-million", t("cacheReadPerM")),
+            "cache-creation-per-million": price("cache-creation-per-million", t("cacheCreatePerM")),
+            "input-cache-mode": field("input-cache-mode").value,
+            "reasoning-mode": field("reasoning-mode").value
           };
         });
       }
 
-      function collectKeySettings() {
-        return Array.from(document.querySelectorAll('.key-setting-row')).map((row) => ({
-          key_id: row.dataset.keyId,
-          label: row.querySelector('[data-field="label"]').value.trim(),
-          limit: nonNegativeNumber(row.querySelector('[data-field="limit"]'), 'Key limit'),
-        }));
-      }
-
-      function collectSettings() {
+      function keySettingsPayload() {
         return {
-          enabled: byId('settings-enabled').checked,
-          sync_on_write: byId('settings-sync').checked,
-          default_price_per_million: nonNegativeNumber(byId('settings-default-price'), 'Default price'),
-          prices: collectPriceRules(),
-          keys: collectKeySettings(),
+          enabled: state.settings.enabled === true,
+          sync_on_write: state.settings.sync_on_write === true,
+          default_price_per_million: Number(state.settings.default_price_per_million == null ? 1 : state.settings.default_price_per_million),
+          prices: Array.isArray(state.settings.prices) ? state.settings.prices : [],
+          keys: collectKeys()
         };
       }
 
-      function renderMetrics(report) {
-        const totals = report.totals || {};
-        const tokens = totals.tokens || {};
-        setText('metric-requests', formatNumber(totals.requests));
-        setText('metric-requests-meta', `${formatNumber(totals.success)} success · ${formatNumber(totals.failed)} failed`);
-        setText('metric-input', formatNumber(tokens.input_tokens));
-        setText('metric-output', formatNumber(tokens.output_tokens));
-        setText('metric-reasoning', formatNumber(tokens.reasoning_tokens));
-        const detailedCache = Number(tokens.cache_read_tokens || 0) + Number(tokens.cache_creation_tokens || 0);
-        setText('metric-cache', formatNumber(detailedCache || tokens.cached_tokens));
-        setText('metric-cost', totals.cost?.total || '0.000000000');
-        const currency = report.currency || totals.cost?.currency || 'USD';
-        setText('metric-cost-meta', `${currency} · default ${report.default_price_per_million ?? 1}/M · ${formatNumber(totals.priced_requests)} priced`);
+      function billingSettingsPayload() {
+        return {
+          enabled: byId("settings-enabled").checked,
+          sync_on_write: byId("settings-sync").checked,
+          default_price_per_million: nonNegativeNumber(byId("settings-default-price"), t("defaultPriceField")),
+          prices: collectPrices(),
+          keys: persistedKeys()
+        };
       }
 
-      function renderKeys(report) {
-        const keys = Array.isArray(report.by_key) ? report.by_key : [];
-        setText('keys-meta', `${formatNumber(keys.length)} ${keys.length === 1 ? 'key' : 'keys'}`);
-        replaceRows('keys-body', 'keys-empty', keys, (key) => {
-          const row = document.createElement('tr');
-          const nameCell = cell(row, '');
-          const name = document.createElement('strong');
-          name.textContent = key.key_label || key.key_mask || 'unlabeled';
-          const id = document.createElement('span');
-          id.className = 'key-id';
-          id.title = key.key_id || '';
-          id.textContent = key.key_id || '';
-          nameCell.append(name, id);
-          cell(row, formatNumber(key.requests), 'numeric');
-          cell(row, formatNumber(key.tokens?.input_tokens), 'numeric');
-          cell(row, formatNumber(key.tokens?.output_tokens), 'numeric');
-          cell(row, formatNumber(key.tokens?.reasoning_tokens), 'numeric');
-          cell(row, formatCost(key.cost, report.currency), 'numeric');
-          const quota = key.quota || {};
-          cell(row, quota.limited ? formatAmount(quota.limit, report.currency) : 'Unlimited', 'numeric');
-          cell(row, quota.limited ? formatAmount(quota.remaining, report.currency) : 'Unlimited', 'numeric');
-          const quotaCell = cell(row, '');
-          quotaCell.appendChild(quotaBadge(quota));
-          return row;
-        });
-      }
-
-      function renderModels(report) {
-        const models = Array.isArray(report.by_model) ? report.by_model : [];
-        setText('models-meta', `${formatNumber(models.length)} ${models.length === 1 ? 'model' : 'models'}`);
-        replaceRows('models-body', 'models-empty', models, (model) => {
-          const row = document.createElement('tr');
-          cell(row, model.provider || 'unknown');
-          cell(row, model.model || 'unknown');
-          cell(row, formatNumber(model.requests), 'numeric');
-          cell(row, formatNumber(model.tokens?.total_tokens), 'numeric');
-          cell(row, formatCost(model.cost, report.currency), 'numeric');
-          return row;
-        });
-      }
-
-      function renderEvents(report) {
-        const events = Array.isArray(report.events) ? report.events : [];
-        const matched = Number(report.matched_events || 0);
-        const start = events.length === 0 ? 0 : state.offset + 1;
-        const end = state.offset + events.length;
-        setText('events-meta', `${formatNumber(matched)} matched · ${formatNumber(report.ledger_events)} ledger events`);
-        setText('page-meta', `${formatNumber(start)}–${formatNumber(end)} of ${formatNumber(matched)}`);
-        byId('previous-page').disabled = state.loading || state.offset === 0;
-        byId('next-page').disabled = state.loading || end >= matched;
-        replaceRows('events-body', 'events-empty', events, (event) => {
-          const row = document.createElement('tr');
-          cell(row, new Date(event.timestamp).toLocaleString());
-          cell(row, event.key_label || event.key_mask || 'unlabeled');
-          cell(row, `${event.provider || 'unknown'} / ${event.model || 'unknown'}`);
-          const statusCell = cell(row, '');
-          const badge = document.createElement('span');
-          badge.className = `badge${event.failed ? ' failed' : ''}`;
-          badge.textContent = event.failed ? `Failed ${event.status_code || ''}`.trim() : `Success ${event.status_code || ''}`.trim();
-          statusCell.appendChild(badge);
-          cell(row, formatNumber(event.tokens?.input_tokens), 'numeric');
-          cell(row, formatNumber(event.tokens?.output_tokens), 'numeric');
-          cell(row, formatNumber(event.tokens?.reasoning_tokens), 'numeric');
-          cell(row, `${formatNumber(event.latency_ms)} ms`, 'numeric');
-          cell(row, formatCost(event.cost, report.currency), 'numeric');
-          return row;
-        });
-      }
-
-      function render(report) {
-        state.report = report;
-        byId('billing-disabled').classList.toggle('hidden', report.enabled !== false);
-        renderMetrics(report);
-        renderKeys(report);
-        renderModels(report);
-        renderEvents(report);
-      }
-
-      async function loadReport({ initial = false } = {}) {
+      async function reloadAll(initial) {
         if (state.loading) return;
         setLoading(true);
-        setStatus('dashboard-status', initial ? 'Connecting…' : 'Refreshing…');
+        setStatus("dashboard-status", t(initial ? "connecting" : "refreshing"));
         try {
-          const [report, settings] = initial ? await Promise.all([fetchReport(), fetchSettings()]) : [await fetchReport(), null];
-          render(report);
-          if (settings) renderSettings(settings);
-          byId('session-notice').classList.add('hidden');
-          setStatus('dashboard-status', `Updated ${new Date().toLocaleTimeString()}`, 'success');
+          const results = await Promise.all([fetchOverview(), fetchReport(), fetchSettings()]);
+          state.overview = results[0];
+          renderSettings(results[2]);
+          renderOverview(results[0], false);
+          renderUsage(results[1]);
+          byId("session-notice").classList.add("hidden");
+          setStatus("dashboard-status", t("updatedAt", { time: new Date().toLocaleTimeString(state.language) }), "success");
         } catch (error) {
-          if (error.status === 401) {
+          if (error.status === 401 || error.status === 403) {
             reportAuthFailure();
-            setStatus('dashboard-status', 'Management session unavailable.', 'error');
+            setStatus("dashboard-status", t("sessionUnavailable"), "error");
           } else {
-            setStatus('dashboard-status', error.message || 'Unable to load billing usage.', 'error');
+            setStatus("dashboard-status", error.message || t("loadFailed"), "error");
           }
         } finally {
           setLoading(false);
-          if (state.report) renderEvents(state.report);
         }
       }
 
-      async function saveSettings() {
+      async function reloadUsage() {
         if (state.loading) return;
         setLoading(true);
-        setStatus('settings-status', 'Saving…');
+        setStatus("dashboard-status", t("refreshing"));
         try {
-          const update = collectSettings();
-          const settings = await requestJSON('/billing/settings', {
-            method: 'PUT',
-            body: JSON.stringify(update),
-          });
-          renderSettings(settings);
-          const report = await fetchReport();
-          render(report);
-          setStatus('settings-status', `Saved ${new Date().toLocaleTimeString()}`, 'success');
-          setStatus('dashboard-status', `Updated ${new Date().toLocaleTimeString()}`, 'success');
+          renderUsage(await fetchReport());
+          setStatus("dashboard-status", t("updatedAt", { time: new Date().toLocaleTimeString(state.language) }), "success");
         } catch (error) {
-          if (error.status === 401) {
-            reportAuthFailure();
-            setStatus('settings-status', 'Management session unavailable.', 'error');
-          } else {
-            setStatus('settings-status', error.message || 'Unable to save billing settings.', 'error');
-          }
+          if (error.status === 401 || error.status === 403) reportAuthFailure();
+          setStatus("dashboard-status", error.message || t("loadFailed"), "error");
         } finally {
           setLoading(false);
-          if (state.report) renderEvents(state.report);
         }
       }
 
-      byId('filters').addEventListener('submit', (event) => {
+      async function save(payload, statusTarget, scope) {
+        if (state.loading) return;
+        setLoading(true);
+        setStatus(statusTarget, t("saving"));
+        try {
+          const settings = await requestJSON("/billing/settings", { method: "PUT", body: JSON.stringify(payload()) });
+          const overview = await fetchOverview();
+          state.settings = settings;
+          state.overview = overview;
+          state.revealedKeys.clear();
+          if (scope === "keys") renderKeys(settings);
+          else renderBillingControls(settings);
+          renderOverview(overview, false);
+          if (scope === "keys" && state.report) renderUsage(state.report);
+          setStatus(statusTarget, t("savedAt", { time: new Date().toLocaleTimeString(state.language) }), "success");
+        } catch (error) {
+          if (error.status === 401 || error.status === 403) reportAuthFailure();
+          setStatus(statusTarget, error.message || t("saveFailed"), "error");
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      function activateTab(tabName) {
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.setAttribute("aria-selected", String(tab.dataset.tab === tabName));
+        });
+        document.querySelectorAll(".tab-panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === "panel-" + tabName);
+        });
+      }
+
+      document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
+      byId("refresh").addEventListener("click", () => {
+        state.offset = 0;
+        reloadAll(false);
+      });
+      byId("key-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        save(keySettingsPayload, "key-status", "keys");
+      });
+      byId("settings-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        save(billingSettingsPayload, "settings-status", "settings");
+      });
+      byId("filters").addEventListener("submit", (event) => {
         event.preventDefault();
         state.offset = 0;
-        loadReport();
+        reloadUsage();
       });
-
-      byId('billing-settings').addEventListener('submit', (event) => {
-        event.preventDefault();
-        saveSettings();
-      });
-
-      byId('add-price-rule').addEventListener('click', () => appendPriceRule());
-
-      byId('reset-filters').addEventListener('click', () => {
-        byId('filters').reset();
+      byId("reset-filters").addEventListener("click", () => {
+        byId("filters").reset();
         state.offset = 0;
-        loadReport();
+        reloadUsage();
       });
-
-      byId('previous-page').addEventListener('click', () => {
+      byId("previous-page").addEventListener("click", () => {
         state.offset = Math.max(0, state.offset - state.limit);
-        loadReport();
+        reloadUsage();
       });
-
-      byId('next-page').addEventListener('click', () => {
+      byId("next-page").addEventListener("click", () => {
         state.offset += state.limit;
-        loadReport();
+        reloadUsage();
       });
-
-      byId('refresh').addEventListener('click', () => {
-        state.offset = 0;
-        loadReport({ initial: true });
-      });
+      byId("add-price-rule").addEventListener("click", () => appendPriceRule({}));
 
       function applyTheme(theme) {
-        if (!theme || typeof theme !== 'object') return;
-        const variables = theme.variables && typeof theme.variables === 'object' ? theme.variables : {};
+        if (!theme || typeof theme !== "object") return;
+        const variables = theme.variables && typeof theme.variables === "object" ? theme.variables : {};
         Object.entries(variables).forEach(([name, value]) => {
-          if (name.startsWith('--') && typeof value === 'string') {
-            document.documentElement.style.setProperty(name, value);
-          }
+          if (name.startsWith("--") && typeof value === "string") document.documentElement.style.setProperty(name, value);
         });
-        if (typeof theme.language === 'string' && theme.language) {
-          document.documentElement.lang = theme.language;
-        }
-        if (typeof theme.colorScheme === 'string' && theme.colorScheme) {
-          document.documentElement.style.colorScheme = theme.colorScheme;
-        }
+        if (typeof theme.language === "string" && theme.language) applyLanguage(theme.language);
+        if (typeof theme.colorScheme === "string" && theme.colorScheme) document.documentElement.style.colorScheme = theme.colorScheme;
       }
 
-      window.addEventListener('message', (event) => {
+      window.addEventListener("message", (event) => {
         if (event.origin !== window.location.origin || event.source !== window.parent) return;
-        if (event.data?.type !== 'cpa-billing-context') return;
+        if (!event.data || event.data.type !== "cpa-billing-context") return;
         applyTheme(event.data.theme);
         const session = event.data.session;
-        if (!session || typeof session.apiBase !== 'string' || typeof session.headerName !== 'string' || typeof session.headerValue !== 'string') {
-          showSessionNotice('Waiting for the current Management Center session…');
+        if (!session || typeof session.apiBase !== "string" || typeof session.headerName !== "string" || typeof session.headerValue !== "string") {
+          showSessionNotice(t("waiting"));
           return;
         }
-        const signature = `${session.apiBase}\n${session.headerName}\n${session.headerValue}`;
+        const signature = session.apiBase + "\n" + session.headerName + "\n" + session.headerValue;
         if (signature === state.sessionSignature) return;
         state.session = {
-          apiBase: session.apiBase.replace(/\/$/, ''),
+          apiBase: session.apiBase.replace(/\/$/, ""),
           headerName: session.headerName,
-          headerValue: session.headerValue,
+          headerValue: session.headerValue
         };
         state.sessionSignature = signature;
         state.offset = 0;
-        loadReport({ initial: true });
+        reloadAll(true);
       });
 
-      window.parent.postMessage({ type: 'cpa-billing-ready' }, window.location.origin);
+      const initialLanguage = new URLSearchParams(window.location.search).get("lang") || navigator.language || "en";
+      applyLanguage(initialLanguage);
+      activateTab("keys");
+      window.parent.postMessage({ type: "cpa-billing-ready" }, window.location.origin);
     })();
   </script>
 </body>

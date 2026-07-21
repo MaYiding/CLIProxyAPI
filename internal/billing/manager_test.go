@@ -197,6 +197,112 @@ func TestManagerReloadsLedgerAndFiltersAllAggregates(t *testing.T) {
 	}
 }
 
+func TestManagerHotUpdatesMetadataWithoutReplayingLedger(t *testing.T) {
+	ledgerPath := filepath.Join(t.TempDir(), "billing.jsonl")
+	initialDefault := 1.0
+	cfg := config.BillingConfig{
+		Enabled:                true,
+		StorePath:              ledgerPath,
+		Currency:               "USD",
+		DefaultPricePerMillion: &initialDefault,
+		KeyLabels:              map[string]string{"hot-key": "old-name"},
+		KeyLimits:              map[string]float64{"hot-key": 5},
+		Prices: []config.BillingPrice{{
+			Name:            "old-openai-price",
+			Provider:        "openai",
+			Model:           "gpt-*",
+			InputPerMillion: 1,
+		}},
+	}
+	manager := NewManager()
+	if errConfigure := manager.ConfigureForKeys(cfg, []string{"hot-key"}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("initial ConfigureForKeys() error = %v", errConfigure)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	baseTime := time.Date(2026, 7, 21, 10, 0, 0, 0, time.UTC)
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "openai", Model: "gpt-5", APIKey: "hot-key", RequestedAt: baseTime,
+		Detail: coreusage.Detail{InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	})
+	fileBeforeUpdate := manager.file
+	if fileBeforeUpdate == nil {
+		t.Fatal("manager.file = nil after initial configuration")
+	}
+
+	ledger, errOpen := os.OpenFile(ledgerPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if errOpen != nil {
+		t.Fatalf("os.OpenFile() error = %v", errOpen)
+	}
+	if _, errWrite := ledger.WriteString("malformed-ledger-record\n"); errWrite != nil {
+		_ = ledger.Close()
+		t.Fatalf("ledger.WriteString() error = %v", errWrite)
+	}
+	if errClose := ledger.Close(); errClose != nil {
+		t.Fatalf("ledger.Close() error = %v", errClose)
+	}
+
+	updatedDefault := 4.0
+	cfg.SyncOnWrite = true
+	cfg.DefaultPricePerMillion = &updatedDefault
+	cfg.KeyLabels = map[string]string{"hot-key": "new-name"}
+	cfg.KeyLimits = map[string]float64{"hot-key": 10}
+	cfg.Prices = []config.BillingPrice{{
+		Name:            "new-openai-price",
+		Provider:        "openai",
+		Model:           "gpt-*",
+		InputPerMillion: 2,
+	}}
+	if errConfigure := manager.ConfigureForKeys(cfg, []string{"hot-key"}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("metadata ConfigureForKeys() error = %v", errConfigure)
+	}
+	if manager.file != fileBeforeUpdate {
+		t.Fatal("metadata update replaced the open ledger file, indicating a replay")
+	}
+
+	afterUpdate := manager.Snapshot(Query{Limit: 10})
+	if afterUpdate.LedgerEvents != 1 || len(afterUpdate.Events) != 1 {
+		t.Fatalf("events after metadata update = %d/%d, want 1/1", afterUpdate.LedgerEvents, len(afterUpdate.Events))
+	}
+	if afterUpdate.Events[0].KeyLabel != "new-name" || afterUpdate.Events[0].Cost.TotalNanos != 1_000_000_000 {
+		t.Fatalf("historical event after metadata update = %#v", afterUpdate.Events[0])
+	}
+	if !afterUpdate.SyncOnWrite || afterUpdate.DefaultPricePerMillion != 4 {
+		t.Fatalf("live settings after update = sync:%v default:%v", afterUpdate.SyncOnWrite, afterUpdate.DefaultPricePerMillion)
+	}
+	status := manager.LimitStatus("hot-key")
+	if status.KeyLabel != "new-name" || !status.Limited || status.Limit != "10.000000000" || status.Spent != "1.000000000" || status.Remaining != "9.000000000" {
+		t.Fatalf("limit status after metadata update = %#v", status)
+	}
+
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "openai", Model: "gpt-5", APIKey: "hot-key", RequestedAt: baseTime.Add(time.Minute),
+		Detail: coreusage.Detail{InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	})
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "gemini", Model: "gemini-pro", APIKey: "hot-key", RequestedAt: baseTime.Add(2 * time.Minute),
+		Detail: coreusage.Detail{InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	})
+
+	final := manager.Snapshot(Query{Limit: 10})
+	if final.LedgerEvents != 3 || len(final.Events) != 3 || final.Totals.Cost.TotalNanos != 7_000_000_000 {
+		t.Fatalf("final report = events:%d/%d cost:%d, want 3/3/7000000000", final.LedgerEvents, len(final.Events), final.Totals.Cost.TotalNanos)
+	}
+	if final.Events[0].Pricing.Rule != "default" || final.Events[0].Cost.TotalNanos != 4_000_000_000 {
+		t.Fatalf("new default-priced event = %#v", final.Events[0])
+	}
+	if final.Events[1].Pricing.Rule != "new-openai-price" || final.Events[1].Cost.TotalNanos != 2_000_000_000 {
+		t.Fatalf("new rule-priced event = %#v", final.Events[1])
+	}
+	if final.Events[2].Pricing.Rule != "old-openai-price" || final.Events[2].Cost.TotalNanos != 1_000_000_000 {
+		t.Fatalf("historical priced event changed = %#v", final.Events[2])
+	}
+	status = manager.LimitStatus("hot-key")
+	if status.Spent != "7.000000000" || status.Remaining != "3.000000000" || status.Blocked {
+		t.Fatalf("final limit status = %#v", status)
+	}
+}
+
 func TestConfigureRejectsInvalidPricing(t *testing.T) {
 	manager := NewManager()
 	errConfigure := manager.Configure(config.BillingConfig{

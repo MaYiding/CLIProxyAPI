@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/billing"
@@ -17,14 +18,17 @@ import (
 )
 
 type billingKeySettings struct {
-	KeyID     string  `json:"key_id"`
-	KeyMask   string  `json:"key_mask"`
-	Label     string  `json:"label"`
-	Limit     float64 `json:"limit"`
-	Limited   bool    `json:"limited"`
-	Blocked   bool    `json:"blocked"`
-	Spent     string  `json:"spent"`
-	Remaining string  `json:"remaining"`
+	KeyID        string  `json:"key_id"`
+	KeyMask      string  `json:"key_mask"`
+	KeyPreview   string  `json:"key_preview"`
+	KeyTruncated bool    `json:"key_truncated"`
+	Name         string  `json:"name"`
+	Label        string  `json:"label,omitempty"`
+	Limit        float64 `json:"limit"`
+	Limited      bool    `json:"limited"`
+	Blocked      bool    `json:"blocked"`
+	Spent        string  `json:"spent"`
+	Remaining    string  `json:"remaining"`
 }
 
 type billingSettingsResponse struct {
@@ -39,6 +43,7 @@ type billingSettingsResponse struct {
 
 type billingKeySettingsUpdate struct {
 	KeyID string  `json:"key_id"`
+	Name  string  `json:"name"`
 	Label string  `json:"label"`
 	Limit float64 `json:"limit"`
 }
@@ -50,6 +55,13 @@ type billingSettingsUpdate struct {
 	Prices                 *[]config.BillingPrice      `json:"prices"`
 	Keys                   *[]billingKeySettingsUpdate `json:"keys"`
 }
+
+const (
+	billingKeyNameMaxBytes    = 128
+	billingKeyPreviewMaxRunes = 16
+	billingKeyPreviewPrefix   = 8
+	billingKeyPreviewSuffix   = 4
+)
 
 // GetBillingUsage returns persistent per-key usage aggregates and request details.
 func (h *Handler) GetBillingUsage(c *gin.Context) {
@@ -74,8 +86,9 @@ func (h *Handler) GetBillingUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, manager.Snapshot(query))
 }
 
-// GetBillingSettings returns editable billing configuration without exposing
-// raw client API keys.
+// GetBillingSettings returns editable billing configuration. Active client
+// keys are represented by a stable identifier and a bounded real preview; the
+// complete value is available only through RevealBillingKey.
 func (h *Handler) GetBillingSettings(c *gin.Context) {
 	if h == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
@@ -91,6 +104,48 @@ func (h *Handler) GetBillingSettings(c *gin.Context) {
 	manager := h.billingManager
 	h.mu.Unlock()
 	c.JSON(http.StatusOK, buildBillingSettingsResponse(cfg, manager))
+}
+
+// RevealBillingKey returns one complete active client API key to an already
+// authenticated management session. The response is deliberately non-cacheable
+// and the key never appears in the request URL, logs, usage reports, or ledger.
+func (h *Handler) RevealBillingKey(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, private, max-age=0")
+	c.Header("Pragma", "no-cache")
+	c.Header("X-Content-Type-Options", "nosniff")
+
+	if h == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler not initialized"})
+		return
+	}
+	keyID := strings.ToLower(strings.TrimSpace(c.Param("key_id")))
+	if len(keyID) != 64 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "active client API key not found"})
+		return
+	}
+
+	h.mu.Lock()
+	if h.cfg == nil {
+		h.mu.Unlock()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "configuration unavailable"})
+		return
+	}
+	var revealed string
+	for _, rawKey := range h.cfg.APIKeys {
+		candidate := strings.TrimSpace(rawKey)
+		candidateID, _ := billing.IdentifyKey(candidate)
+		if strings.EqualFold(candidateID, keyID) {
+			revealed = candidate
+			break
+		}
+	}
+	h.mu.Unlock()
+
+	if revealed == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "active client API key not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"key": revealed})
 }
 
 // PutBillingSettings validates, persists, and immediately applies editable
@@ -152,14 +207,14 @@ func (h *Handler) PutBillingSettings(c *gin.Context) {
 			return
 		}
 		seen[keyID] = struct{}{}
-		label := strings.TrimSpace(keyUpdate.Label)
-		if len(label) > 128 {
+		name, errName := billingKeyName(keyUpdate)
+		if errName != nil {
 			h.mu.Unlock()
-			c.JSON(http.StatusBadRequest, gin.H{"error": "key labels must not exceed 128 bytes"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errName.Error()})
 			return
 		}
-		if label != "" {
-			labels[rawKey] = label
+		if name != "" {
+			labels[rawKey] = name
 		}
 		if keyUpdate.Limit != 0 {
 			limits[rawKey] = keyUpdate.Limit
@@ -225,6 +280,7 @@ func buildBillingSettingsResponse(cfg *config.Config, manager *billing.Manager) 
 	response.Prices = append(response.Prices, cfg.Billing.Prices...)
 	for _, rawKey := range billingRawKeys(cfg) {
 		keyID, keyMask := billing.IdentifyKey(rawKey)
+		keyPreview, keyTruncated := billingKeyPreview(rawKey)
 		status := billing.LimitStatus{Allowed: true}
 		if manager != nil {
 			status = manager.LimitStatus(rawKey)
@@ -232,14 +288,17 @@ func buildBillingSettingsResponse(cfg *config.Config, manager *billing.Manager) 
 		label := strings.TrimSpace(cfg.Billing.KeyLabels[rawKey])
 		limit := cfg.Billing.KeyLimits[rawKey]
 		response.Keys = append(response.Keys, billingKeySettings{
-			KeyID:     keyID,
-			KeyMask:   keyMask,
-			Label:     label,
-			Limit:     limit,
-			Limited:   limit > 0,
-			Blocked:   status.Blocked,
-			Spent:     status.Spent,
-			Remaining: status.Remaining,
+			KeyID:        keyID,
+			KeyMask:      keyMask,
+			KeyPreview:   keyPreview,
+			KeyTruncated: keyTruncated,
+			Name:         label,
+			Label:        label,
+			Limit:        limit,
+			Limited:      limit > 0,
+			Blocked:      status.Blocked,
+			Spent:        status.Spent,
+			Remaining:    status.Remaining,
 		})
 	}
 	return response
@@ -249,38 +308,51 @@ func billingRawKeys(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
 	}
-	keys := make([]string, 0, len(cfg.APIKeys)+len(cfg.Billing.KeyLabels)+len(cfg.Billing.KeyLimits))
+	keys := make([]string, 0, len(cfg.APIKeys))
 	seen := make(map[string]struct{})
-	appendKey := func(rawKey string) {
+	for _, rawKey := range cfg.APIKeys {
 		rawKey = strings.TrimSpace(rawKey)
 		if rawKey == "" {
-			return
+			continue
 		}
 		if _, exists := seen[rawKey]; exists {
-			return
+			continue
 		}
 		seen[rawKey] = struct{}{}
 		keys = append(keys, rawKey)
 	}
-	for _, rawKey := range cfg.APIKeys {
-		appendKey(rawKey)
-	}
-	orphans := make([]string, 0, len(cfg.Billing.KeyLabels)+len(cfg.Billing.KeyLimits))
-	for rawKey := range cfg.Billing.KeyLabels {
-		if _, exists := seen[strings.TrimSpace(rawKey)]; !exists {
-			orphans = append(orphans, rawKey)
-		}
-	}
-	for rawKey := range cfg.Billing.KeyLimits {
-		if _, exists := seen[strings.TrimSpace(rawKey)]; !exists {
-			orphans = append(orphans, rawKey)
-		}
-	}
-	sort.Strings(orphans)
-	for _, rawKey := range orphans {
-		appendKey(rawKey)
-	}
 	return keys
+}
+
+func billingKeyName(update billingKeySettingsUpdate) (string, error) {
+	name := strings.TrimSpace(update.Name)
+	legacyLabel := strings.TrimSpace(update.Label)
+	if name != "" && legacyLabel != "" && name != legacyLabel {
+		return "", errors.New("key name and legacy label must match when both are provided")
+	}
+	if name == "" {
+		name = legacyLabel
+	}
+	if !utf8.ValidString(name) {
+		return "", errors.New("key names must be valid UTF-8")
+	}
+	if len(name) > billingKeyNameMaxBytes {
+		return "", fmt.Errorf("key names must not exceed %d bytes", billingKeyNameMaxBytes)
+	}
+	for _, character := range name {
+		if unicode.IsControl(character) {
+			return "", errors.New("key names must not contain control characters")
+		}
+	}
+	return name, nil
+}
+
+func billingKeyPreview(rawKey string) (string, bool) {
+	runes := []rune(strings.TrimSpace(rawKey))
+	if len(runes) <= billingKeyPreviewMaxRunes {
+		return string(runes), false
+	}
+	return string(runes[:billingKeyPreviewPrefix]) + "…" + string(runes[len(runes)-billingKeyPreviewSuffix:]), true
 }
 
 func parseBillingQuery(c *gin.Context) (billing.Query, error) {

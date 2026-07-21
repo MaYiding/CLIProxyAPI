@@ -130,7 +130,7 @@ CLIProxyAPI 用户手册： [https://help.router-for.me/](https://help.router-fo
 
 ## 使用量统计
 
-CLIProxyAPI 内置了可选的追加式计费账本：支持可配置的每百万 Token 默认单价、按 Provider/模型覆盖价格，以及按调用方 API Key 设置累计金额限额；达到限额后会停止该 KEY 的新请求。登录 `/management.html` 后，从左侧的 **API Key 计费** 页面即可查看和配置；旧的 `/billing.html` 地址会自动跳转到该页面。详见 [API Key 内置计费](docs/billing.md)。
+CLIProxyAPI 内置了可选的追加式计费账本：支持为客户端 KEY 设置显示名称、配置每百万 Token 默认单价、按 Provider/模型覆盖价格，以及设置累计金额限额；达到限额后会停止该 KEY 的新请求。登录 `/management.html` 后，从左侧的 **计费与用量** 页面即可查看和配置，无需二次认证；旧的 `/billing.html` 地址会自动跳转到该页面。详见 [API Key 内置计费](docs/billing.md)。
 
 如需完整仪表盘、长期数据库分析或账号池运维，可使用以下配套项目：
 

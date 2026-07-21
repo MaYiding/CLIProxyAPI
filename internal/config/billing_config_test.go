@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestParseConfigBytesBilling(t *testing.T) {
 	cfg, errParse := ParseConfigBytes([]byte(`
@@ -56,5 +61,71 @@ billing:
 	clone.Billing.Prices[0].InputPerMillion = 99
 	if cfg.Billing.KeyLabels["client-key"] != "customer-a" || *cfg.Billing.DefaultPricePerMillion != 1.5 || cfg.Billing.KeyLimits["client-key"] != 25 || cfg.Billing.Prices[0].InputPerMillion != 1.25 {
 		t.Fatalf("CloneForRuntime() shared billing references with source")
+	}
+}
+
+func TestSaveConfigPreserveCommentsPrunesClearedBillingSettings(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	original := `# keep this comment
+billing:
+  enabled: true
+  currency: USD
+  sync-on-write: true
+  key-labels:
+    client-key: customer-a
+  key-limits:
+    client-key: 25
+  prices:
+    - name: old-price
+      provider: openai
+      model: gpt-*
+      input-per-million: 3
+`
+	if errWrite := os.WriteFile(configPath, []byte(original), 0o600); errWrite != nil {
+		t.Fatalf("os.WriteFile() error = %v", errWrite)
+	}
+
+	cfg, errLoad := LoadConfig(configPath)
+	if errLoad != nil {
+		t.Fatalf("LoadConfig() error = %v", errLoad)
+	}
+	cfg.Billing.SyncOnWrite = false
+	cfg.Billing.KeyLabels = nil
+	cfg.Billing.KeyLimits = nil
+	cfg.Billing.Prices = nil
+
+	if errSave := SaveConfigPreserveComments(configPath, cfg); errSave != nil {
+		t.Fatalf("SaveConfigPreserveComments() error = %v", errSave)
+	}
+
+	reloaded, errReload := LoadConfig(configPath)
+	if errReload != nil {
+		t.Fatalf("reloaded LoadConfig() error = %v", errReload)
+	}
+	if reloaded.Billing.SyncOnWrite {
+		t.Fatal("Billing.SyncOnWrite = true after clearing and saving")
+	}
+	if len(reloaded.Billing.KeyLabels) != 0 {
+		t.Fatalf("Billing.KeyLabels = %#v, want empty", reloaded.Billing.KeyLabels)
+	}
+	if len(reloaded.Billing.KeyLimits) != 0 {
+		t.Fatalf("Billing.KeyLimits = %#v, want empty", reloaded.Billing.KeyLimits)
+	}
+	if len(reloaded.Billing.Prices) != 0 {
+		t.Fatalf("Billing.Prices = %#v, want empty", reloaded.Billing.Prices)
+	}
+
+	saved, errRead := os.ReadFile(configPath)
+	if errRead != nil {
+		t.Fatalf("os.ReadFile() error = %v", errRead)
+	}
+	savedText := string(saved)
+	for _, staleKey := range []string{"sync-on-write:", "key-labels:", "key-limits:", "prices:"} {
+		if strings.Contains(savedText, staleKey) {
+			t.Fatalf("saved config retained cleared billing key %q:\n%s", staleKey, savedText)
+		}
+	}
+	if !strings.Contains(savedText, "# keep this comment") {
+		t.Fatalf("saved config lost the original comment:\n%s", savedText)
 	}
 }

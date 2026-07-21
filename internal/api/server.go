@@ -880,6 +880,7 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/billing/usage", s.mgmt.GetBillingUsage)
 		mgmt.GET("/billing/settings", s.mgmt.GetBillingSettings)
 		mgmt.PUT("/billing/settings", s.mgmt.PutBillingSettings)
+		mgmt.POST("/billing/keys/:key_id/reveal", s.mgmt.RevealBillingKey)
 		mgmt.GET("/usage-queue", s.mgmt.GetUsageQueue)
 
 		mgmt.GET("/gemini-api-key", s.mgmt.GetGeminiKeys)
