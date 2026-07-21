@@ -1,0 +1,325 @@
+<style id="cpa-billing-management-module">
+  #cpa-billing-nav {
+    width: 100%;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+  }
+  .sidebar.collapsed #cpa-billing-nav .nav-text {
+    display: none;
+  }
+  .sidebar.collapsed #cpa-billing-nav {
+    justify-content: center;
+    padding: 10px;
+  }
+  .app-shell.cpa-billing-view-active .sidebar .nav-item.active:not(#cpa-billing-nav) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .content.cpa-billing-content {
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+  .main-content.cpa-billing-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    background: var(--bg-secondary);
+  }
+  .main-content.cpa-billing-main > :not(#cpa-billing-frame) {
+    display: none;
+  }
+  #cpa-billing-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border: 0;
+    background: var(--bg-secondary);
+  }
+  #cpa-billing-frame.cpa-billing-frame-hidden {
+    display: none;
+  }
+</style>
+<script id="cpa-billing-management-script">
+  (() => {
+    'use strict';
+
+    if (window.__cpaBillingManagementLoaded) return;
+    window.__cpaBillingManagementLoaded = true;
+
+    const viewParameter = 'cpa-view';
+    const viewValue = 'billing';
+    const frameID = 'cpa-billing-frame';
+    const navID = 'cpa-billing-nav';
+    const managementPath = '/v0/management';
+    const themeVariables = [
+      '--bg-primary', '--bg-secondary', '--bg-tertiary', '--bg-hover', '--bg-quinary',
+      '--floating-surface', '--text-primary', '--text-secondary', '--text-tertiary',
+      '--text-muted', '--border-color', '--border-primary', '--border-hover',
+      '--primary-color', '--primary-hover', '--primary-active', '--primary-contrast',
+      '--success-color', '--warning-color', '--error-color', '--danger-color',
+      '--warning-bg', '--warning-border', '--warning-text', '--success-badge-bg',
+      '--success-badge-text', '--failure-badge-bg', '--failure-badge-text',
+      '--count-badge-bg', '--count-badge-text', '--shadow', '--shadow-lg', '--radius-md'
+    ];
+    let session = null;
+    let frame = null;
+    let active = false;
+    let reconcileQueued = false;
+
+    function normalizedURL(value) {
+      try {
+        const target = value instanceof URL ? value.href : (typeof value === 'string' ? value : value?.url || '');
+        return new URL(target, window.location.href);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function managementBase(value) {
+      const url = normalizedURL(value);
+      if (!url) return '';
+      const index = url.pathname.indexOf(managementPath);
+      if (index < 0) return '';
+      return `${url.origin}${url.pathname.slice(0, index + managementPath.length)}`;
+    }
+
+    function captureSession(urlValue, name, value) {
+      const apiBase = managementBase(urlValue);
+      if (!apiBase || typeof value !== 'string' || !value.trim()) return;
+      const normalizedName = String(name || '').toLowerCase();
+      if (normalizedName !== 'authorization' && normalizedName !== 'x-management-key') return;
+      session = { apiBase, headerName: name, headerValue: value };
+      sendContext();
+    }
+
+    function headerValue(headers, name) {
+      if (!headers) return '';
+      try {
+        const normalized = new Headers(headers);
+        return normalized.get(name) || '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    const originalFetch = window.fetch;
+    if (typeof originalFetch === 'function') {
+      window.fetch = function billingAwareFetch(input, init) {
+        const urlValue = typeof input === 'string' || input instanceof URL ? input : input?.url;
+        const requestHeaders = input instanceof Request ? input.headers : undefined;
+        const authorization = headerValue(init?.headers, 'Authorization') || headerValue(requestHeaders, 'Authorization');
+        const managementKey = headerValue(init?.headers, 'X-Management-Key') || headerValue(requestHeaders, 'X-Management-Key');
+        if (authorization) captureSession(urlValue, 'Authorization', authorization);
+        if (managementKey) captureSession(urlValue, 'X-Management-Key', managementKey);
+        return originalFetch.apply(this, arguments);
+      };
+    }
+
+    const xhrOpen = XMLHttpRequest.prototype.open;
+    const xhrSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.open = function billingAwareOpen(method, url) {
+      this.__cpaBillingRequestURL = url;
+      return xhrOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.setRequestHeader = function billingAwareSetRequestHeader(name, value) {
+      captureSession(this.__cpaBillingRequestURL, name, value);
+      return xhrSetRequestHeader.apply(this, arguments);
+    };
+
+    function currentLanguage() {
+      return document.documentElement.lang || navigator.language || 'en';
+    }
+
+    function localizedCopy() {
+      const language = currentLanguage().toLowerCase();
+      if (language.startsWith('zh-tw') || language.startsWith('zh-hk')) {
+        return { label: '計費與用量', meta: '價格、限額與明細', title: '計費與用量' };
+      }
+      if (language.startsWith('zh')) {
+        return { label: '计费与用量', meta: '价格、限额与明细', title: '计费与用量' };
+      }
+      if (language.startsWith('ru')) {
+        return { label: 'Биллинг', meta: 'Цены, лимиты и расходы', title: 'Биллинг и расходы' };
+      }
+      return { label: 'Billing & usage', meta: 'Prices, limits & ledger', title: 'Billing & usage' };
+    }
+
+    function themeSnapshot() {
+      const styles = getComputedStyle(document.documentElement);
+      const variables = {};
+      themeVariables.forEach((name) => {
+        const value = styles.getPropertyValue(name).trim();
+        if (value) variables[name] = value;
+      });
+      return {
+        variables,
+        language: currentLanguage(),
+        colorScheme: styles.colorScheme || '',
+      };
+    }
+
+    function sendContext() {
+      if (!frame?.contentWindow) return;
+      frame.contentWindow.postMessage({
+        type: 'cpa-billing-context',
+        session,
+        theme: themeSnapshot(),
+      }, window.location.origin);
+    }
+
+    function billingRequested() {
+      return new URLSearchParams(window.location.search).get(viewParameter) === viewValue;
+    }
+
+    function updateURL(show, push) {
+      const url = new URL(window.location.href);
+      if (show) url.searchParams.set(viewParameter, viewValue);
+      else url.searchParams.delete(viewParameter);
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (next === current) return;
+      if (push) window.history.pushState({ cpaBilling: show }, '', next);
+      else window.history.replaceState(window.history.state, '', next);
+    }
+
+    function createFrame() {
+      if (frame?.isConnected) return frame;
+      frame = document.createElement('iframe');
+      frame.id = frameID;
+      frame.src = '/billing.html?embedded=1';
+      frame.title = localizedCopy().title;
+      frame.setAttribute('loading', 'eager');
+      frame.setAttribute('referrerpolicy', 'same-origin');
+      frame.addEventListener('load', sendContext);
+      return frame;
+    }
+
+    function closeMobileSidebar() {
+      const backdrop = document.querySelector('.sidebar-backdrop.visible');
+      if (backdrop instanceof HTMLElement) backdrop.click();
+    }
+
+    function activate(pushHistory) {
+      const shell = document.querySelector('.app-shell');
+      const content = document.querySelector('.content');
+      const main = content?.querySelector(':scope > .main-content');
+      if (!shell || !content || !main) return false;
+      active = true;
+      if (pushHistory) updateURL(true, true);
+      shell.classList.add('cpa-billing-view-active');
+      content.classList.add('cpa-billing-content');
+      main.classList.add('cpa-billing-main');
+      const currentFrame = createFrame();
+      currentFrame.classList.remove('cpa-billing-frame-hidden');
+      if (currentFrame.parentElement !== main) main.appendChild(currentFrame);
+      const nav = document.getElementById(navID);
+      if (nav) {
+        nav.classList.add('active');
+        nav.setAttribute('aria-current', 'page');
+      }
+      closeMobileSidebar();
+      sendContext();
+      return true;
+    }
+
+    function deactivate(updateHistory) {
+      if (!active && !billingRequested()) return;
+      active = false;
+      if (updateHistory) updateURL(false, false);
+      document.querySelector('.app-shell')?.classList.remove('cpa-billing-view-active');
+      document.querySelector('.content')?.classList.remove('cpa-billing-content');
+      document.querySelector('.main-content')?.classList.remove('cpa-billing-main');
+      const nav = document.getElementById(navID);
+      if (nav) {
+        nav.classList.remove('active');
+        nav.removeAttribute('aria-current');
+      }
+      frame?.classList.add('cpa-billing-frame-hidden');
+    }
+
+    function createNavigationItem() {
+      const copy = localizedCopy();
+      const button = document.createElement('button');
+      button.id = navID;
+      button.type = 'button';
+      button.className = 'nav-item';
+      button.title = copy.label;
+      button.setAttribute('aria-label', copy.label);
+      button.innerHTML = '<span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M16 8.5c-.8-.8-2-1.3-3.4-1.3-1.8 0-3.1.9-3.1 2.2 0 1.4 1.2 2 3.4 2.5 2.1.5 3.2 1.1 3.2 2.5 0 1.5-1.5 2.5-3.7 2.5-1.7 0-3.2-.6-4.2-1.6M12 5v14"></path></svg></span><span class="nav-text"><span class="nav-label"></span><span class="nav-meta"></span></span>';
+      button.querySelector('.nav-label').textContent = copy.label;
+      button.querySelector('.nav-meta').textContent = copy.meta;
+      button.addEventListener('click', () => activate(true));
+      return button;
+    }
+
+    function ensureNavigation() {
+      const quotaLink = document.querySelector('.sidebar a[href="#/quota"], .sidebar a[href*="#/quota"], .sidebar a[href$="/quota"]');
+      const group = quotaLink?.closest('.nav-group');
+      if (!group) return false;
+      let nav = document.getElementById(navID);
+      if (!nav) {
+        nav = createNavigationItem();
+        quotaLink.insertAdjacentElement('afterend', nav);
+      } else {
+        const copy = localizedCopy();
+        nav.title = copy.label;
+        nav.setAttribute('aria-label', copy.label);
+        nav.querySelector('.nav-label').textContent = copy.label;
+        nav.querySelector('.nav-meta').textContent = copy.meta;
+        if (frame) frame.title = copy.title;
+      }
+      if (billingRequested()) activate(false);
+      return true;
+    }
+
+    function reconcile() {
+      reconcileQueued = false;
+      const shell = document.querySelector('.app-shell');
+      if (!shell) {
+        if (document.querySelector('input[name="cpa-management-key"]')) session = null;
+        active = false;
+        frame = null;
+        return;
+      }
+      ensureNavigation();
+      if (active) activate(false);
+      sendContext();
+    }
+
+    function queueReconcile() {
+      if (reconcileQueued) return;
+      reconcileQueued = true;
+      window.requestAnimationFrame(reconcile);
+    }
+
+    document.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('.sidebar .nav-item') : null;
+      if (target && target.id !== navID) deactivate(true);
+    }, true);
+
+    window.addEventListener('popstate', () => {
+      if (billingRequested()) activate(false);
+      else deactivate(false);
+    });
+    window.addEventListener('hashchange', () => {
+      if (active && !billingRequested()) deactivate(false);
+    });
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin || event.source !== frame?.contentWindow) return;
+      if (event.data?.type === 'cpa-billing-ready') sendContext();
+      if (event.data?.type === 'cpa-billing-auth-invalid') session = null;
+    });
+
+    new MutationObserver(queueReconcile).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(() => {
+      ensureNavigation();
+      sendContext();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'lang'] });
+    queueReconcile();
+  })();
+</script>

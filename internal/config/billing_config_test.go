@@ -9,8 +9,11 @@ billing:
   store-path: data/billing.jsonl
   currency: CNY
   sync-on-write: true
+  default-price-per-million: 1.5
   key-labels:
     client-key: customer-a
+  key-limits:
+    client-key: 25
   prices:
     - name: gpt-pricing
       provider: openai
@@ -32,6 +35,12 @@ billing:
 	if cfg.Billing.KeyLabels["client-key"] != "customer-a" {
 		t.Fatalf("key labels = %#v", cfg.Billing.KeyLabels)
 	}
+	if cfg.Billing.DefaultPricePerMillion == nil || *cfg.Billing.DefaultPricePerMillion != 1.5 {
+		t.Fatalf("default price = %#v, want 1.5", cfg.Billing.DefaultPricePerMillion)
+	}
+	if cfg.Billing.KeyLimits["client-key"] != 25 {
+		t.Fatalf("key limits = %#v", cfg.Billing.KeyLimits)
+	}
 	if len(cfg.Billing.Prices) != 1 {
 		t.Fatalf("price rules = %d, want 1", len(cfg.Billing.Prices))
 	}
@@ -42,8 +51,10 @@ billing:
 
 	clone := cfg.CloneForRuntime()
 	clone.Billing.KeyLabels["client-key"] = "changed"
+	*clone.Billing.DefaultPricePerMillion = 99
+	clone.Billing.KeyLimits["client-key"] = 99
 	clone.Billing.Prices[0].InputPerMillion = 99
-	if cfg.Billing.KeyLabels["client-key"] != "customer-a" || cfg.Billing.Prices[0].InputPerMillion != 1.25 {
+	if cfg.Billing.KeyLabels["client-key"] != "customer-a" || *cfg.Billing.DefaultPricePerMillion != 1.5 || cfg.Billing.KeyLimits["client-key"] != 25 || cfg.Billing.Prices[0].InputPerMillion != 1.25 {
 		t.Fatalf("CloneForRuntime() shared billing references with source")
 	}
 }

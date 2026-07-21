@@ -130,7 +130,7 @@ see [MANAGEMENT_API.md](https://help.router-for.me/management/api)
 
 ## Usage Statistics
 
-CLIProxyAPI includes an opt-in, append-only billing ledger for request-level usage and configurable token pricing, grouped by client API key and model. It also serves a built-in dashboard at `/billing.html`. See [Built-in API Key Billing](docs/billing.md).
+CLIProxyAPI includes an opt-in, append-only billing ledger with a configurable default per-million-token price, provider/model overrides, and cumulative spend limits that stop individual client API keys at their configured amount. View and edit it from **API Key Billing** in the `/management.html` sidebar; the legacy `/billing.html` URL redirects there. See [Built-in API Key Billing](docs/billing.md).
 
 For full dashboards, long-term database analytics, and account-pool operations, use one of these companion projects:
 

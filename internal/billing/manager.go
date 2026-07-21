@@ -27,11 +27,12 @@ import (
 )
 
 const (
-	defaultCurrency = "USD"
-	defaultFileName = "billing.jsonl"
-	modeAuto        = "auto"
-	modeIncluded    = "included"
-	modeAdditional  = "additional"
+	defaultCurrency        = "USD"
+	defaultFileName        = "billing.jsonl"
+	defaultPricePerMillion = 1.0
+	modeAuto               = "auto"
+	modeIncluded           = "included"
+	modeAdditional         = "additional"
 )
 
 // TokenUsage stores both provider-reported counters and normalized billable counters.
@@ -123,12 +124,35 @@ type Totals struct {
 	Cost             CostBreakdown `json:"cost"`
 }
 
+// Quota describes cumulative spend-limit state for one client API key.
+type Quota struct {
+	Limited        bool   `json:"limited"`
+	Blocked        bool   `json:"blocked"`
+	LimitNanos     int64  `json:"limit_nanos"`
+	SpentNanos     int64  `json:"spent_nanos"`
+	RemainingNanos int64  `json:"remaining_nanos"`
+	Limit          string `json:"limit"`
+	Spent          string `json:"spent"`
+	Remaining      string `json:"remaining"`
+}
+
 // KeySummary aggregates matched usage for one client API key.
 type KeySummary struct {
 	KeyID    string `json:"key_id"`
 	KeyLabel string `json:"key_label"`
 	KeyMask  string `json:"key_mask"`
+	Quota    Quota  `json:"quota"`
 	Totals
+}
+
+// LimitStatus is the pre-request quota decision for one client API key.
+type LimitStatus struct {
+	KeyID    string `json:"key_id"`
+	KeyLabel string `json:"key_label"`
+	KeyMask  string `json:"key_mask"`
+	Currency string `json:"currency"`
+	Allowed  bool   `json:"allowed"`
+	Quota
 }
 
 // ModelSummary aggregates matched usage for one provider and model.
@@ -140,18 +164,19 @@ type ModelSummary struct {
 
 // Report is the management API representation of a billing query.
 type Report struct {
-	Enabled       bool           `json:"enabled"`
-	Currency      string         `json:"currency"`
-	StorePath     string         `json:"store_path,omitempty"`
-	SyncOnWrite   bool           `json:"sync_on_write"`
-	LedgerEvents  int            `json:"ledger_events"`
-	MatchedEvents int            `json:"matched_events"`
-	Limit         int            `json:"limit"`
-	Offset        int            `json:"offset"`
-	Totals        Totals         `json:"totals"`
-	ByKey         []KeySummary   `json:"by_key"`
-	ByModel       []ModelSummary `json:"by_model"`
-	Events        []Event        `json:"events"`
+	Enabled                bool           `json:"enabled"`
+	Currency               string         `json:"currency"`
+	DefaultPricePerMillion float64        `json:"default_price_per_million"`
+	StorePath              string         `json:"store_path,omitempty"`
+	SyncOnWrite            bool           `json:"sync_on_write"`
+	LedgerEvents           int            `json:"ledger_events"`
+	MatchedEvents          int            `json:"matched_events"`
+	Limit                  int            `json:"limit"`
+	Offset                 int            `json:"offset"`
+	Totals                 Totals         `json:"totals"`
+	ByKey                  []KeySummary   `json:"by_key"`
+	ByModel                []ModelSummary `json:"by_model"`
+	Events                 []Event        `json:"events"`
 }
 
 type compiledPrice struct {
@@ -163,18 +188,29 @@ type compiledPrice struct {
 	reasoningMode string
 }
 
+type keyProfile struct {
+	keyID      string
+	keyLabel   string
+	keyMask    string
+	limitNanos int64
+}
+
 // Manager writes usage records to an append-only ledger and serves snapshots.
 type Manager struct {
-	mu          sync.RWMutex
-	enabled     bool
-	currency    string
-	storePath   string
-	syncOnWrite bool
-	file        *os.File
-	events      []Event
-	prices      []compiledPrice
-	keyLabels   map[string]string
-	keyIDLabels map[string]string
+	mu                     sync.RWMutex
+	enabled                bool
+	currency               string
+	defaultPricePerMillion float64
+	defaultPrice           compiledPrice
+	storePath              string
+	syncOnWrite            bool
+	file                   *os.File
+	events                 []Event
+	prices                 []compiledPrice
+	keyLabels              map[string]string
+	keyIDLabels            map[string]string
+	keyProfiles            map[string]keyProfile
+	spentByKey             map[string]int64
 }
 
 var defaultManager = NewManager()
@@ -185,7 +221,7 @@ func init() {
 
 // NewManager creates a disabled billing manager.
 func NewManager() *Manager {
-	return &Manager{currency: defaultCurrency}
+	return &Manager{currency: defaultCurrency, defaultPricePerMillion: defaultPricePerMillion}
 }
 
 // DefaultManager returns the process-wide billing manager registered with usage reporting.
@@ -193,6 +229,12 @@ func DefaultManager() *Manager { return defaultManager }
 
 // Configure atomically replaces the billing configuration and reloads the ledger.
 func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath string) error {
+	return m.ConfigureForKeys(cfg, nil, authDir, configFilePath)
+}
+
+// ConfigureForKeys configures billing and records the complete set of client API
+// keys so reports can include unused keys and quota checks can remain O(1).
+func (m *Manager) ConfigureForKeys(cfg config.BillingConfig, clientKeys []string, authDir, configFilePath string) error {
 	if m == nil {
 		return errors.New("billing manager is nil")
 	}
@@ -205,8 +247,17 @@ func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath st
 	if errPrices != nil {
 		return errPrices
 	}
+	defaultRate, defaultPrice, errDefaultPrice := compileDefaultPrice(cfg.DefaultPricePerMillion)
+	if errDefaultPrice != nil {
+		return errDefaultPrice
+	}
 	labels := normalizeKeyLabels(cfg.KeyLabels)
 	keyIDLabels := labelsByKeyID(labels)
+	limits, errLimits := normalizeKeyLimits(cfg.KeyLimits)
+	if errLimits != nil {
+		return errLimits
+	}
+	profiles := compileKeyProfiles(clientKeys, labels, limits)
 
 	if !cfg.Enabled {
 		m.mu.Lock()
@@ -214,12 +265,16 @@ func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath st
 		errClose := m.closeLocked()
 		m.enabled = false
 		m.currency = currency
+		m.defaultPricePerMillion = defaultRate
+		m.defaultPrice = defaultPrice
 		m.storePath = ""
 		m.syncOnWrite = false
 		m.events = nil
 		m.prices = prices
 		m.keyLabels = labels
 		m.keyIDLabels = keyIDLabels
+		m.keyProfiles = profiles
+		m.spentByKey = nil
 		if errClose != nil {
 			return fmt.Errorf("billing: close ledger: %w", errClose)
 		}
@@ -234,7 +289,8 @@ func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.enabled && m.file != nil && m.currency == currency && m.storePath == storePath &&
-		m.syncOnWrite == cfg.SyncOnWrite && reflect.DeepEqual(m.prices, prices) && reflect.DeepEqual(m.keyLabels, labels) {
+		m.syncOnWrite == cfg.SyncOnWrite && m.defaultPricePerMillion == defaultRate &&
+		reflect.DeepEqual(m.prices, prices) && reflect.DeepEqual(m.keyLabels, labels) && reflect.DeepEqual(m.keyProfiles, profiles) {
 		return nil
 	}
 	if errMkdir := os.MkdirAll(filepath.Dir(storePath), 0o700); errMkdir != nil {
@@ -264,6 +320,8 @@ func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath st
 	}
 	m.enabled = true
 	m.currency = currency
+	m.defaultPricePerMillion = defaultRate
+	m.defaultPrice = defaultPrice
 	m.storePath = storePath
 	m.syncOnWrite = cfg.SyncOnWrite
 	m.file = file
@@ -271,7 +329,31 @@ func (m *Manager) Configure(cfg config.BillingConfig, authDir, configFilePath st
 	m.prices = prices
 	m.keyLabels = labels
 	m.keyIDLabels = keyIDLabels
+	m.keyProfiles = profiles
+	m.spentByKey = aggregateSpend(events)
 	return nil
+}
+
+// ValidateConfig validates billing rates, counter modes, and key limits without
+// opening or modifying the configured ledger.
+func ValidateConfig(cfg config.BillingConfig) error {
+	if _, errPrices := compilePrices(cfg.Prices); errPrices != nil {
+		return errPrices
+	}
+	if _, _, errDefaultPrice := compileDefaultPrice(cfg.DefaultPricePerMillion); errDefaultPrice != nil {
+		return errDefaultPrice
+	}
+	_, errLimits := normalizeKeyLimits(cfg.KeyLimits)
+	return errLimits
+}
+
+// EffectiveDefaultPricePerMillion returns the configured fallback price or the
+// built-in one-unit default when the field is omitted.
+func EffectiveDefaultPricePerMillion(cfg config.BillingConfig) float64 {
+	if cfg.DefaultPricePerMillion == nil {
+		return defaultPricePerMillion
+	}
+	return *cfg.DefaultPricePerMillion
 }
 
 // HandleUsage implements usage.Plugin.
@@ -303,6 +385,10 @@ func (m *Manager) HandleUsage(ctx context.Context, record coreusage.Record) {
 		}
 	}
 	m.events = append(m.events, event)
+	if m.spentByKey == nil {
+		m.spentByKey = make(map[string]int64)
+	}
+	m.spentByKey[event.KeyID] = saturatingAdd(m.spentByKey[event.KeyID], event.Cost.TotalNanos)
 }
 
 // Snapshot returns filtered aggregates plus a reverse-chronological event page.
@@ -314,10 +400,13 @@ func (m *Manager) Snapshot(query Query) Report {
 	m.mu.RLock()
 	enabled := m.enabled
 	currency := m.currency
+	defaultRate := m.defaultPricePerMillion
 	storePath := m.storePath
 	syncOnWrite := m.syncOnWrite
 	events := append([]Event(nil), m.events...)
-	keyIDLabels := m.keyIDLabels
+	keyIDLabels := cloneStringMap(m.keyIDLabels)
+	keyProfiles := cloneKeyProfiles(m.keyProfiles)
+	spentByKey := cloneInt64Map(m.spentByKey)
 	m.mu.RUnlock()
 
 	if currency == "" {
@@ -325,16 +414,17 @@ func (m *Manager) Snapshot(query Query) Report {
 	}
 	query = normalizeQuery(query)
 	report := Report{
-		Enabled:      enabled,
-		Currency:     currency,
-		StorePath:    storePath,
-		SyncOnWrite:  syncOnWrite,
-		LedgerEvents: len(events),
-		Limit:        query.Limit,
-		Offset:       query.Offset,
-		ByKey:        []KeySummary{},
-		ByModel:      []ModelSummary{},
-		Events:       []Event{},
+		Enabled:                enabled,
+		Currency:               currency,
+		DefaultPricePerMillion: defaultRate,
+		StorePath:              storePath,
+		SyncOnWrite:            syncOnWrite,
+		LedgerEvents:           len(events),
+		Limit:                  query.Limit,
+		Offset:                 query.Offset,
+		ByKey:                  []KeySummary{},
+		ByModel:                []ModelSummary{},
+		Events:                 []Event{},
 	}
 	keyTotals := make(map[string]*KeySummary)
 	modelTotals := make(map[string]*ModelSummary)
@@ -369,7 +459,27 @@ func (m *Manager) Snapshot(query Query) Report {
 
 	report.MatchedEvents = len(matched)
 	finalizeTotals(&report.Totals, currency)
+	if queryIncludesConfiguredKeys(query) {
+		for keyID, profile := range keyProfiles {
+			if query.KeyID != "" && !strings.EqualFold(query.KeyID, keyID) {
+				continue
+			}
+			if keyTotals[keyID] == nil {
+				keyTotals[keyID] = &KeySummary{KeyID: keyID, KeyLabel: profile.keyLabel, KeyMask: profile.keyMask}
+			}
+		}
+	}
 	for _, summary := range keyTotals {
+		profile, hasProfile := keyProfiles[summary.KeyID]
+		if hasProfile {
+			if profile.keyLabel != "" {
+				summary.KeyLabel = profile.keyLabel
+			}
+			if profile.keyMask != "" {
+				summary.KeyMask = profile.keyMask
+			}
+		}
+		summary.Quota = quotaFor(profile.limitNanos, spentByKey[summary.KeyID])
 		finalizeTotals(&summary.Totals, currency)
 		report.ByKey = append(report.ByKey, *summary)
 	}
@@ -405,6 +515,38 @@ func (m *Manager) Snapshot(query Query) Report {
 	}
 	report.Events = append(report.Events, matched[start:end]...)
 	return report
+}
+
+// LimitStatus returns the current cumulative spend-limit decision for rawKey.
+// Raw client keys are used only for lookup and are never returned.
+func (m *Manager) LimitStatus(rawKey string) LimitStatus {
+	keyID, keyMask := identifyKey(rawKey)
+	status := LimitStatus{KeyID: keyID, KeyMask: keyMask, Currency: defaultCurrency, Allowed: true, Quota: quotaFor(0, 0)}
+	if m == nil {
+		return status
+	}
+
+	m.mu.RLock()
+	enabled := m.enabled
+	currency := m.currency
+	profile, exists := m.keyProfiles[keyID]
+	spent := m.spentByKey[keyID]
+	m.mu.RUnlock()
+	if currency != "" {
+		status.Currency = currency
+	}
+	if !enabled {
+		return status
+	}
+	if exists {
+		status.KeyLabel = profile.keyLabel
+		status.KeyMask = profile.keyMask
+		status.Quota = quotaFor(profile.limitNanos, spent)
+	} else {
+		status.Quota = quotaFor(0, spent)
+	}
+	status.Allowed = !status.Blocked
+	return status
 }
 
 // Flush asks the operating system to persist the current ledger contents.
@@ -459,6 +601,9 @@ func (m *Manager) buildEventLocked(ctx context.Context, record coreusage.Record)
 	}
 
 	price := matchPrice(m.prices, provider, model)
+	if price == nil {
+		price = &m.defaultPrice
+	}
 	pricing, tokens, cost := priceRecord(record.Detail, price, m.currency)
 	statusCode := record.Fail.StatusCode
 	if statusCode <= 0 {
@@ -508,6 +653,36 @@ func (m *Manager) buildEventLocked(ctx context.Context, record coreusage.Record)
 		Pricing:         pricing,
 		Cost:            cost,
 	}
+}
+
+func compileDefaultPrice(configured *float64) (float64, compiledPrice, error) {
+	rate := defaultPricePerMillion
+	if configured != nil {
+		rate = *configured
+	}
+	rule := config.BillingPrice{
+		Name:                    "default",
+		Provider:                "*",
+		Model:                   "*",
+		InputPerMillion:         rate,
+		OutputPerMillion:        rate,
+		ReasoningPerMillion:     rate,
+		CacheReadPerMillion:     rate,
+		CacheCreationPerMillion: rate,
+		InputCacheMode:          modeAuto,
+		ReasoningMode:           modeAuto,
+	}
+	if errRate := validateRates(rule); errRate != nil {
+		return 0, compiledPrice{}, fmt.Errorf("billing: default price: %w", errRate)
+	}
+	return rate, compiledPrice{
+		rule:          rule,
+		name:          rule.Name,
+		provider:      rule.Provider,
+		model:         rule.Model,
+		cacheMode:     modeAuto,
+		reasoningMode: modeAuto,
+	}, nil
 }
 
 func compilePrices(rules []config.BillingPrice) ([]compiledPrice, error) {
@@ -626,9 +801,6 @@ func priceRecord(detail coreusage.Detail, price *compiledPrice, currency string)
 	output := nonNegative(detail.OutputTokens)
 	reasoning := nonNegative(detail.ReasoningTokens)
 	total := nonNegative(detail.TotalTokens)
-	if total == 0 {
-		total = saturatingAdd(saturatingAdd(input, output), reasoning)
-	}
 
 	cacheMode := modeAuto
 	reasoningMode := modeAuto
@@ -644,6 +816,15 @@ func priceRecord(detail coreusage.Detail, price *compiledPrice, currency string)
 	billableOutput := output
 	if resolvedReasoningMode == modeIncluded {
 		billableOutput = subtractFloorZero(billableOutput, reasoning)
+	}
+	normalizedTotal := saturatingSum(billableInput, billableOutput, reasoning, cacheRead, cacheCreation)
+	if total == 0 {
+		total = normalizedTotal
+	} else if total > normalizedTotal {
+		// Some upstreams report total_tokens without a complete category breakdown.
+		// Attribute the otherwise unpriced remainder to billable input so the
+		// default equal-rate policy still charges exactly once per reported token.
+		billableInput = saturatingAdd(billableInput, total-normalizedTotal)
 	}
 
 	tokens := TokenUsage{
@@ -940,6 +1121,12 @@ func identifyKey(rawKey string) (string, string) {
 	return hex.EncodeToString(sum[:]), mask
 }
 
+// IdentifyKey returns the stable SHA-256 identifier and non-secret mask used by
+// billing APIs for a raw client API key.
+func IdentifyKey(rawKey string) (string, string) {
+	return identifyKey(rawKey)
+}
+
 func billingSource(rawSource, authType string) (string, string) {
 	source := strings.TrimSpace(rawSource)
 	if source == "" {
@@ -978,6 +1165,131 @@ func labelsByKeyID(labels map[string]string) map[string]string {
 		byID[keyID] = label
 	}
 	return byID
+}
+
+func normalizeKeyLimits(limits map[string]float64) (map[string]int64, error) {
+	if len(limits) == 0 {
+		return nil, nil
+	}
+	normalized := make(map[string]int64, len(limits))
+	for rawKey, amount := range limits {
+		limitNanos, errAmount := currencyAmountNanos(amount)
+		if errAmount != nil {
+			return nil, fmt.Errorf("billing: key limit: %w", errAmount)
+		}
+		key := strings.TrimSpace(rawKey)
+		if key == "" || limitNanos == 0 {
+			continue
+		}
+		normalized[key] = limitNanos
+	}
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+	return normalized, nil
+}
+
+func compileKeyProfiles(clientKeys []string, labels map[string]string, limits map[string]int64) map[string]keyProfile {
+	rawKeys := make(map[string]struct{}, len(clientKeys)+len(labels)+len(limits))
+	for _, rawKey := range clientKeys {
+		if key := strings.TrimSpace(rawKey); key != "" {
+			rawKeys[key] = struct{}{}
+		}
+	}
+	for rawKey := range labels {
+		rawKeys[rawKey] = struct{}{}
+	}
+	for rawKey := range limits {
+		rawKeys[rawKey] = struct{}{}
+	}
+	if len(rawKeys) == 0 {
+		return nil
+	}
+	profiles := make(map[string]keyProfile, len(rawKeys))
+	for rawKey := range rawKeys {
+		keyID, keyMask := identifyKey(rawKey)
+		label := strings.TrimSpace(labels[rawKey])
+		if label == "" {
+			label = keyMask
+		}
+		profiles[keyID] = keyProfile{
+			keyID:      keyID,
+			keyLabel:   label,
+			keyMask:    keyMask,
+			limitNanos: limits[rawKey],
+		}
+	}
+	return profiles
+}
+
+func aggregateSpend(events []Event) map[string]int64 {
+	if len(events) == 0 {
+		return nil
+	}
+	spend := make(map[string]int64)
+	for i := range events {
+		spend[events[i].KeyID] = saturatingAdd(spend[events[i].KeyID], events[i].Cost.TotalNanos)
+	}
+	return spend
+}
+
+func quotaFor(limitNanos, spentNanos int64) Quota {
+	if spentNanos < 0 {
+		spentNanos = 0
+	}
+	quota := Quota{
+		SpentNanos: spentNanos,
+		Spent:      formatNanos(spentNanos),
+	}
+	if limitNanos <= 0 {
+		return quota
+	}
+	quota.Limited = true
+	quota.LimitNanos = limitNanos
+	quota.Limit = formatNanos(limitNanos)
+	quota.Blocked = spentNanos >= limitNanos
+	if spentNanos < limitNanos {
+		quota.RemainingNanos = limitNanos - spentNanos
+	}
+	quota.Remaining = formatNanos(quota.RemainingNanos)
+	return quota
+}
+
+func queryIncludesConfiguredKeys(query Query) bool {
+	return query.From.IsZero() && query.To.IsZero() && query.Provider == "" && query.Model == ""
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
+}
+
+func cloneInt64Map(source map[string]int64) map[string]int64 {
+	if len(source) == 0 {
+		return nil
+	}
+	clone := make(map[string]int64, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
+}
+
+func cloneKeyProfiles(source map[string]keyProfile) map[string]keyProfile {
+	if len(source) == 0 {
+		return nil
+	}
+	clone := make(map[string]keyProfile, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
 }
 
 func normalizeQuery(query Query) Query {
@@ -1028,6 +1340,21 @@ func nonNegative(value int64) int64 {
 		return 0
 	}
 	return value
+}
+
+func currencyAmountNanos(amount float64) (int64, error) {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount < 0 {
+		return 0, errors.New("amount must be finite and non-negative")
+	}
+	nanos := amount * 1_000_000_000
+	if nanos >= float64(math.MaxInt64) {
+		return 0, errors.New("amount is too large")
+	}
+	rounded := int64(math.Round(nanos))
+	if amount > 0 && rounded == 0 {
+		return 0, errors.New("positive amount must be at least 0.000000001")
+	}
+	return rounded, nil
 }
 
 func subtractFloorZero(value, subtract int64) int64 {

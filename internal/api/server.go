@@ -64,6 +64,10 @@ var corsExposedResponseHeaders = []string{
 	"X-CPA-HOME-BUILD-DATE",
 	"X-SERVER-VERSION",
 	"X-SERVER-BUILD-DATE",
+	"X-Billing-Currency",
+	"X-Billing-Limit",
+	"X-Billing-Spent",
+	"X-Billing-Remaining",
 }
 
 var corsExposedResponseHeadersJoined = strings.Join(corsExposedResponseHeaders, ", ")
@@ -518,6 +522,7 @@ func (s *Server) setupRoutes() {
 	s.engine.GET("/management.html", s.serveManagementControlPanel)
 	s.engine.GET(billingPagePath, s.serveBillingPage)
 	s.engine.HEAD(billingPagePath, s.serveBillingPage)
+	billingGate := billingLimitMiddleware(billing.DefaultManager())
 	openaiHandlers := openai.NewOpenAIAPIHandler(s.handlers)
 	geminiHandlers := gemini.NewGeminiAPIHandler(s.handlers)
 	claudeCodeHandlers := claude.NewClaudeCodeAPIHandler(s.handlers)
@@ -525,7 +530,7 @@ func (s *Server) setupRoutes() {
 
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
-	v1.Use(AuthMiddleware(s.accessManager))
+	v1.Use(AuthMiddleware(s.accessManager), billingGate)
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
@@ -546,7 +551,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	openaiV1 := s.engine.Group("/openai/v1")
-	openaiV1.Use(AuthMiddleware(s.accessManager))
+	openaiV1.Use(AuthMiddleware(s.accessManager), billingGate)
 	{
 		openaiV1.POST("/videos", openaiHandlers.VideosCreate)
 		openaiV1.GET("/videos/:video_id/content", openaiHandlers.VideosContent)
@@ -555,7 +560,7 @@ func (s *Server) setupRoutes() {
 
 	// Codex CLI direct route aliases (chatgpt_base_url compatible)
 	codexDirect := s.engine.Group("/backend-api/codex")
-	codexDirect.Use(AuthMiddleware(s.accessManager))
+	codexDirect.Use(AuthMiddleware(s.accessManager), billingGate)
 	{
 		codexDirect.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
 		codexDirect.POST("/responses", openaiResponsesHandlers.Responses)
@@ -565,7 +570,7 @@ func (s *Server) setupRoutes() {
 
 	// Gemini compatible API routes
 	v1beta := s.engine.Group("/v1beta")
-	v1beta.Use(AuthMiddleware(s.accessManager))
+	v1beta.Use(AuthMiddleware(s.accessManager), billingGate)
 	{
 		v1beta.GET("/models", s.geminiModelsHandler(geminiHandlers))
 		v1beta.POST("/interactions", geminiHandlers.Interactions)
@@ -799,7 +804,7 @@ func (s *Server) AttachWebsocketRoute(path string, handler http.Handler) {
 		c.Abort()
 	}
 
-	s.engine.GET(trimmed, conditionalAuth, finalHandler)
+	s.engine.GET(trimmed, conditionalAuth, billingLimitMiddleware(billing.DefaultManager()), finalHandler)
 }
 
 func (s *Server) registerManagementRoutes() {
@@ -873,6 +878,8 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.DELETE("/api-keys", s.mgmt.DeleteAPIKeys)
 		mgmt.GET("/api-key-usage", s.mgmt.GetAPIKeyUsage)
 		mgmt.GET("/billing/usage", s.mgmt.GetBillingUsage)
+		mgmt.GET("/billing/settings", s.mgmt.GetBillingSettings)
+		mgmt.PUT("/billing/settings", s.mgmt.PutBillingSettings)
 		mgmt.GET("/usage-queue", s.mgmt.GetUsageQueue)
 
 		mgmt.GET("/gemini-api-key", s.mgmt.GetGeminiKeys)
@@ -1100,7 +1107,14 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 		}
 	}
 
-	c.File(filePath)
+	page, errRead := os.ReadFile(filePath)
+	if errRead != nil {
+		log.WithError(errRead).Error("failed to read management control panel asset")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", injectBillingManagementModule(page))
 }
 
 func (s *Server) enableKeepAlive(timeout time.Duration, onTimeout func()) {
@@ -1820,7 +1834,7 @@ func configureBilling(cfg *config.Config, configFilePath string) {
 		_ = manager.Configure(config.BillingConfig{}, "", configFilePath)
 		return
 	}
-	if errConfigure := manager.Configure(cfg.Billing, cfg.AuthDir, configFilePath); errConfigure != nil {
+	if errConfigure := manager.ConfigureForKeys(cfg.Billing, cfg.APIKeys, cfg.AuthDir, configFilePath); errConfigure != nil {
 		log.WithError(errConfigure).Error("failed to configure billing; billing has been disabled")
 		if errDisable := manager.Configure(config.BillingConfig{}, cfg.AuthDir, configFilePath); errDisable != nil {
 			log.WithError(errDisable).Warn("failed to disable billing after configuration error")

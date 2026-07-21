@@ -187,9 +187,17 @@ type BillingConfig struct {
 	// SyncOnWrite fsyncs every event before it is exposed in reports. This improves
 	// power-loss durability at the cost of write throughput.
 	SyncOnWrite bool `yaml:"sync-on-write,omitempty" json:"sync-on-write,omitempty"`
+	// DefaultPricePerMillion is the fallback price for every token category when no
+	// provider/model price rule matches. Nil defaults to one currency unit per
+	// million tokens; a pointer is used so an explicit zero remains configurable.
+	DefaultPricePerMillion *float64 `yaml:"default-price-per-million,omitempty" json:"default-price-per-million,omitempty"`
 	// KeyLabels maps client API keys to stable, user-facing billing labels.
 	// Raw keys are never persisted to the billing ledger.
 	KeyLabels map[string]string `yaml:"key-labels,omitempty" json:"key-labels,omitempty"`
+	// KeyLimits maps client API keys to cumulative spend limits in Currency units.
+	// Missing and zero values are unlimited. Limits are enforced before proxying a
+	// new request once the persisted ledger spend reaches the configured amount.
+	KeyLimits map[string]float64 `yaml:"key-limits,omitempty" json:"key-limits,omitempty"`
 	// Prices is evaluated in order; the first provider/model pattern match wins.
 	Prices []BillingPrice `yaml:"prices,omitempty" json:"prices,omitempty"`
 }

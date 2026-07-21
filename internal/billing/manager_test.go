@@ -183,7 +183,7 @@ func TestManagerReloadsLedgerAndFiltersAllAggregates(t *testing.T) {
 	if all.MatchedEvents != 2 || len(all.Events) != 1 || !all.Events[0].Timestamp.Equal(firstTime) {
 		t.Fatalf("reverse pagination mismatch: %#v", all.Events)
 	}
-	if all.Totals.PricedRequests != 1 || all.Totals.UnpricedRequests != 1 || all.Totals.Failed != 1 {
+	if all.Totals.PricedRequests != 2 || all.Totals.UnpricedRequests != 0 || all.Totals.Failed != 1 || all.Totals.Cost.TotalNanos != 25_000 {
 		t.Fatalf("all totals = %#v", all.Totals)
 	}
 
@@ -217,6 +217,148 @@ func TestConfigureRejectsInvalidPricing(t *testing.T) {
 	}, t.TempDir(), "")
 	if errConfigure == nil || !strings.Contains(errConfigure.Error(), "input-cache-mode") {
 		t.Fatalf("Configure() error = %v, want mode error", errConfigure)
+	}
+
+	invalidDefault := -1.0
+	errConfigure = manager.Configure(config.BillingConfig{
+		Enabled:                true,
+		DefaultPricePerMillion: &invalidDefault,
+	}, t.TempDir(), "")
+	if errConfigure == nil || !strings.Contains(errConfigure.Error(), "default price") {
+		t.Fatalf("Configure() error = %v, want default price error", errConfigure)
+	}
+
+	errConfigure = manager.Configure(config.BillingConfig{
+		Enabled:   true,
+		KeyLimits: map[string]float64{"client-key": -1},
+	}, t.TempDir(), "")
+	if errConfigure == nil || !strings.Contains(errConfigure.Error(), "key limit") {
+		t.Fatalf("Configure() error = %v, want key limit error", errConfigure)
+	}
+
+	errConfigure = manager.Configure(config.BillingConfig{
+		Enabled:   true,
+		KeyLimits: map[string]float64{"client-key": 0.0000000001},
+	}, t.TempDir(), "")
+	if errConfigure == nil || !strings.Contains(errConfigure.Error(), "at least 0.000000001") {
+		t.Fatalf("Configure() error = %v, want minimum key limit error", errConfigure)
+	}
+}
+
+func TestManagerUsesConfigurableDefaultPrice(t *testing.T) {
+	ledgerPath := filepath.Join(t.TempDir(), "billing.jsonl")
+	manager := NewManager()
+	if errConfigure := manager.Configure(config.BillingConfig{Enabled: true, StorePath: ledgerPath}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("Configure() error = %v", errConfigure)
+	}
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "gemini", Model: "gemini-pro", APIKey: "key-a",
+		Detail: coreusage.Detail{InputTokens: 600_000, OutputTokens: 400_000, TotalTokens: 1_000_000},
+	})
+
+	first := manager.Snapshot(Query{Limit: 10})
+	if first.DefaultPricePerMillion != 1 || len(first.Events) != 1 {
+		t.Fatalf("default-priced report = %#v", first)
+	}
+	if first.Events[0].Pricing.Rule != "default" || first.Events[0].Cost.TotalNanos != 1_000_000_000 || first.Events[0].Cost.Total != "1.000000000" {
+		t.Fatalf("default-priced event = %#v", first.Events[0])
+	}
+
+	customDefault := 2.5
+	if errConfigure := manager.Configure(config.BillingConfig{
+		Enabled:                true,
+		StorePath:              ledgerPath,
+		DefaultPricePerMillion: &customDefault,
+	}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("custom Configure() error = %v", errConfigure)
+	}
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "claude", Model: "claude-sonnet", APIKey: "key-a",
+		Detail: coreusage.Detail{InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	})
+	t.Cleanup(func() { _ = manager.Close() })
+
+	second := manager.Snapshot(Query{Limit: 10})
+	if second.DefaultPricePerMillion != 2.5 || second.Totals.Cost.TotalNanos != 3_500_000_000 {
+		t.Fatalf("custom default report = %#v", second)
+	}
+	if second.Events[0].Cost.TotalNanos != 2_500_000_000 || second.Events[1].Cost.TotalNanos != 1_000_000_000 {
+		t.Fatalf("historical prices were not frozen: %#v", second.Events)
+	}
+}
+
+func TestManagerChargesReportedTotalWhenBreakdownIsMissing(t *testing.T) {
+	manager := newTestManager(t, config.BillingConfig{Enabled: true})
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "custom", Model: "total-only", APIKey: "key-a",
+		Detail: coreusage.Detail{TotalTokens: 1_000_000},
+	})
+
+	event := manager.Snapshot(Query{Limit: 10}).Events[0]
+	if event.Tokens.InputTokens != 0 || event.Tokens.BillableInputTokens != 1_000_000 || event.Tokens.TotalTokens != 1_000_000 {
+		t.Fatalf("total-only tokens = %#v", event.Tokens)
+	}
+	if event.Cost.TotalNanos != 1_000_000_000 || event.Cost.Total != "1.000000000" {
+		t.Fatalf("total-only cost = %#v", event.Cost)
+	}
+}
+
+func TestManagerEnforcesConfiguredKeyLimitAndReloadsSpend(t *testing.T) {
+	ledgerPath := filepath.Join(t.TempDir(), "billing.jsonl")
+	cfg := config.BillingConfig{
+		Enabled:   true,
+		StorePath: ledgerPath,
+		KeyLabels: map[string]string{"limited-key": "team-limited"},
+		KeyLimits: map[string]float64{"limited-key": 1},
+	}
+	manager := NewManager()
+	if errConfigure := manager.ConfigureForKeys(cfg, []string{"limited-key", "unlimited-key"}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("ConfigureForKeys() error = %v", errConfigure)
+	}
+
+	initial := manager.Snapshot(Query{Limit: 10})
+	if len(initial.ByKey) != 2 {
+		t.Fatalf("configured keys = %d, want 2: %#v", len(initial.ByKey), initial.ByKey)
+	}
+	if status := manager.LimitStatus("limited-key"); !status.Allowed || !status.Limited || status.Blocked || status.Limit != "1.000000000" {
+		t.Fatalf("initial limited status = %#v", status)
+	}
+
+	manager.HandleUsage(context.Background(), coreusage.Record{
+		Provider: "openai", Model: "gpt-5", APIKey: "limited-key",
+		Detail: coreusage.Detail{InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	})
+	status := manager.LimitStatus("limited-key")
+	if status.Allowed || !status.Blocked || status.Spent != "1.000000000" || status.Remaining != "0.000000000" {
+		t.Fatalf("exact-limit status = %#v", status)
+	}
+	if status := manager.LimitStatus("unlimited-key"); !status.Allowed || status.Limited || status.Blocked {
+		t.Fatalf("unlimited status = %#v", status)
+	}
+
+	cfg.KeyLimits["limited-key"] = 2
+	if errConfigure := manager.ConfigureForKeys(cfg, []string{"limited-key", "unlimited-key"}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("increased-limit ConfigureForKeys() error = %v", errConfigure)
+	}
+	if status := manager.LimitStatus("limited-key"); !status.Allowed || status.Blocked || status.Remaining != "1.000000000" {
+		t.Fatalf("increased-limit status = %#v", status)
+	}
+	if errClose := manager.Close(); errClose != nil {
+		t.Fatalf("Close() error = %v", errClose)
+	}
+
+	cfg.KeyLimits["limited-key"] = 0.5
+	reloaded := NewManager()
+	if errConfigure := reloaded.ConfigureForKeys(cfg, []string{"limited-key", "unlimited-key"}, t.TempDir(), ""); errConfigure != nil {
+		t.Fatalf("reload ConfigureForKeys() error = %v", errConfigure)
+	}
+	t.Cleanup(func() { _ = reloaded.Close() })
+	if status := reloaded.LimitStatus("limited-key"); status.Allowed || !status.Blocked || status.Spent != "1.000000000" {
+		t.Fatalf("reloaded status = %#v", status)
+	}
+	report := reloaded.Snapshot(Query{Limit: 10})
+	if len(report.ByKey) != 2 || !report.ByKey[0].Quota.Blocked {
+		t.Fatalf("reloaded key summaries = %#v", report.ByKey)
 	}
 }
 

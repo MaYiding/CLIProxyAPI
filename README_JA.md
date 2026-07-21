@@ -129,7 +129,7 @@ CLIProxyAPIガイド：[https://help.router-for.me/](https://help.router-for.me/
 
 ## 使用量統計
 
-CLIProxyAPIには、クライアントAPI Keyとモデルごとのリクエスト単位の使用量を記録し、設定したToken単価でコストを見積もる、オプトイン方式の追記専用課金台帳と `/billing.html` の内蔵ダッシュボードがあります。詳細は [Built-in API Key Billing](docs/billing.md) を参照してください。
+CLIProxyAPIには、設定可能な100万Tokenあたりの既定単価、Provider/モデル別の価格上書き、クライアントAPI Keyごとの累積金額上限を備えた、オプトイン方式の追記専用課金台帳があります。上限に達したKEYの新規リクエストは停止されます。`/management.html` にログインし、左側の **API Key Billing** ページから確認・設定できます。従来の `/billing.html` URL はこのページへリダイレクトされます。詳細は [Built-in API Key Billing](docs/billing.md) を参照してください。
 
 完全なダッシュボード、長期データベース分析、アカウントプール運用には、次の関連プロジェクトをご利用ください：
 

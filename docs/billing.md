@@ -27,9 +27,18 @@ billing:
   # Optional: fsync every event for stronger power-loss durability.
   sync-on-write: false
 
+  # Fallback for every token category when no rule below matches.
+  # Omitted defaults to 1.00; explicit 0 is allowed.
+  default-price-per-million: 1.00
+
   key-labels:
     "client-api-key-a": "customer-a"
     "client-api-key-b": "internal-tools"
+
+  # Cumulative spend limits in the configured currency. Missing/0 is unlimited.
+  key-limits:
+    "client-api-key-a": 25.00
+    "client-api-key-b": 0
 
   prices:
     - name: "gpt-production"
@@ -50,9 +59,13 @@ billing:
       output-per-million: 1.50
 ```
 
-Prices in this example are illustrative, not current vendor prices. CLIProxyAPI does not fetch or assume provider prices. Update the rules from your own contract or price source.
+Advanced prices in this example are illustrative, not current vendor prices. CLIProxyAPI does not fetch provider prices. The built-in fallback is one currency unit per million tokens, as configured by `default-price-per-million`; update it and any advanced rules from your own contract or price source.
 
-Rules are evaluated in order, and the first match wins. `provider` and `model` are case-insensitive glob patterns supporting `*` and `?`. Requests without a matching rule are still fully recorded and reported as `unpriced_requests`; their cost is zero instead of an invented estimate.
+Rules are evaluated in order, and the first match wins. `provider` and `model` are case-insensitive glob patterns supporting `*` and `?`. Requests without a matching advanced rule use `default-price-per-million` for input, output, reasoning, cache-read, and cache-creation tokens after overlap normalization, so each normalized token is charged once. Historical events keep the price snapshot that was active when they were recorded.
+
+If an upstream reports `total_tokens` but omits part or all of the category breakdown, the positive unclassified remainder is added to `billable_input_tokens` and charged at the matched input rate. This prevents total-only usage records from silently becoming free while keeping the original provider counters visible.
+
+`key-limits` is keyed by the same downstream client keys configured under top-level `api-keys`. Limits are cumulative across the active ledger. When a key's persisted spend is equal to or greater than its positive limit, all authenticated proxy routes reject new requests with HTTP `429`, error code `billing_limit_exceeded`, and `X-Billing-*` amount headers. Raising the limit immediately unblocks the key; `0` or a missing entry is unlimited. Requests already in flight when another request crosses a limit can finish and be billed, so a small concurrent overshoot is possible by design.
 
 `usage-statistics-enabled` controls the short-lived usage queue and is independent of billing. Billing only requires `billing.enabled: true`.
 
@@ -100,15 +113,24 @@ curl -H 'Authorization: Bearer <management-key>' \
 
 The response includes totals across every matching event, `by_key` and `by_model` aggregates, and a reverse-chronological paginated `events` list. Pagination affects only `events`, not the aggregates.
 
-## Web dashboard
-
-Open the built-in dashboard at:
+Editable settings are available through:
 
 ```text
-http://127.0.0.1:8317/billing.html
+GET /v0/management/billing/settings
+PUT /v0/management/billing/settings
 ```
 
-Enter the management key when prompted. The key is held only in the current browser tab and is not written to local storage. The dashboard provides aggregate cards, per-key and per-model tables, request details, filters, and pagination. It is embedded in the server binary, so it remains available independently of management-center asset updates.
+These endpoints power the built-in dashboard. They expose only hashed key IDs and masked suffixes, never raw client keys. The PUT endpoint accepts complete billing settings, validates prices and limits, persists `config.yaml`, and applies the new configuration immediately.
+
+## Web dashboard
+
+Open the management center at:
+
+```text
+http://127.0.0.1:8317/management.html
+```
+
+Sign in once with the normal management-center credentials, then select **API Key Billing** in the left sidebar. No second authentication step is required. The page provides editable default and advanced prices, per-key labels and limits, live blocked/remaining status, aggregate cards, per-key and per-model tables, request details, filters, and pagination. The legacy `/billing.html` URL redirects to this integrated page. The module is embedded in the server binary, so it remains available independently of management-center asset updates.
 
 The dashboard follows the same availability rules as `management.html`: it returns `404` when the control panel is disabled or the process runs in Home mode. API authentication and filtering remain enforced by `/v0/management/billing/usage`.
 
@@ -120,5 +142,6 @@ The dashboard follows the same availability rules as `management.html`: it retur
 - Retries and additional-model calls are separate upstream usage events. This reflects actual provider-side work and avoids undercounting failed-over requests.
 - Failed requests with reported token usage are priced normally. Failed requests without usage metadata remain visible with zero tokens and zero cost.
 - Unit prices are frozen into each event, so changing configuration affects new requests without rewriting historical charges.
+- Key limits use cumulative frozen event costs from the active ledger. Use a new ledger path when starting a completely new accounting period.
 - A ledger cannot mix currencies. To change `currency`, select a new `store-path`; startup rejects a ledger whose recorded currency differs from the configured currency.
 - The built-in API intentionally has no destructive ledger endpoint. Archive or rotate the file with your normal retention process.

@@ -111,11 +111,18 @@ billing:
   currency: "USD"
   # Fsync every event for stronger power-loss durability at lower throughput.
   sync-on-write: false
+  # Fallback rate for every token category when no provider/model rule matches.
+  # Defaults to 1.00 when omitted. Set 0 explicitly for free accounting.
+  default-price-per-million: 1.00
   # Optional labels make key-level reports easier to read. Keys remain hashed/masked in the ledger.
   key-labels:
     "your-api-key-1": "team-a"
+  # Optional cumulative spend limits in the configured currency. Missing or 0 means unlimited.
+  # Once persisted spend reaches a positive limit, new requests using that client key return HTTP 429.
+  key-limits:
+    "your-api-key-1": 25.00
   # Rules are evaluated in order; the first provider/model glob match wins.
-  # Rates are per one million tokens in the configured currency. Values below are illustrative only.
+  # Rules override the default rate. Rates are per one million tokens in the configured currency.
   prices:
     - name: "example-gpt"
       provider: "openai"
