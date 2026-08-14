@@ -397,6 +397,10 @@ type ClaudeKey struct {
 	// DisableCooling disables auth/model cooldown scheduling for this credential when true.
 	DisableCooling bool `yaml:"disable-cooling,omitempty" json:"disable-cooling,omitempty"`
 
+	// RequestRetry optionally overrides the global request-retry for this credential.
+	// Nil or a negative value means "use the global request-retry". 0 disables retries.
+	RequestRetry *int `yaml:"request-retry,omitempty" json:"request-retry,omitempty"`
+
 	// Cloak configures request cloaking for non-Claude-Code clients.
 	Cloak *CloakConfig `yaml:"cloak,omitempty" json:"cloak,omitempty"`
 
@@ -491,6 +495,10 @@ type CodexKey struct {
 
 	// DisableCooling disables auth/model cooldown scheduling for this credential when true.
 	DisableCooling bool `yaml:"disable-cooling,omitempty" json:"disable-cooling,omitempty"`
+
+	// RequestRetry optionally overrides the global request-retry for this credential.
+	// Nil or a negative value means "use the global request-retry". 0 disables retries.
+	RequestRetry *int `yaml:"request-retry,omitempty" json:"request-retry,omitempty"`
 }
 
 func (k CodexKey) GetAPIKey() string { return k.APIKey }
@@ -580,6 +588,10 @@ type GeminiKey struct {
 
 	// DisableCooling disables auth/model cooldown scheduling for this credential when true.
 	DisableCooling bool `yaml:"disable-cooling,omitempty" json:"disable-cooling,omitempty"`
+
+	// RequestRetry optionally overrides the global request-retry for this credential.
+	// Nil or a negative value means "use the global request-retry". 0 disables retries.
+	RequestRetry *int `yaml:"request-retry,omitempty" json:"request-retry,omitempty"`
 }
 
 func (k GeminiKey) GetAPIKey() string { return k.APIKey }
@@ -659,6 +671,10 @@ type OpenAICompatibility struct {
 
 	// DisableCooling disables auth/model cooldown scheduling for this provider when true.
 	DisableCooling bool `yaml:"disable-cooling,omitempty" json:"disable-cooling,omitempty"`
+
+	// RequestRetry optionally overrides the global request-retry for this provider.
+	// Nil or a negative value means "use the global request-retry". 0 disables retries.
+	RequestRetry *int `yaml:"request-retry,omitempty" json:"request-retry,omitempty"`
 }
 
 // OpenAICompatibilityAPIKey represents an API key configuration with optional proxy setting.
