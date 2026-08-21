@@ -81,7 +81,7 @@ func TestConfigSynthesizer_GeminiKeys(t *testing.T) {
 		{
 			name: "gemini key disable cooling",
 			geminiKeys: []config.GeminiKey{
-				{APIKey: "test-key-123", Prefix: "team-a", DisableCooling: true},
+				{APIKey: "test-key-123", Prefix: "team-a", DisableCooling: boolPointer(true)},
 			},
 			wantLen: 1,
 			validate: func(t *testing.T, auths []*coreauth.Auth) {
@@ -227,8 +227,9 @@ func TestConfigSynthesizer_ClaudeKeys(t *testing.T) {
 					APIKey:                  "sk-ant-api-xxx",
 					Prefix:                  "main",
 					BaseURL:                 "https://api.anthropic.com",
-					DisableCooling:          true,
+					DisableCooling:          boolPointer(true),
 					RebuildMidSystemMessage: true,
+					FingerprintProfile:      "claude-code-cli",
 					Models: []config.ClaudeModel{
 						{Name: "claude-3-opus"},
 						{Name: "claude-3-sonnet"},
@@ -268,6 +269,9 @@ func TestConfigSynthesizer_ClaudeKeys(t *testing.T) {
 	}
 	if got := auths[0].Attributes["rebuild_mid_system_message"]; got != "true" {
 		t.Errorf("expected rebuild_mid_system_message=true, got %s", got)
+	}
+	if got := auths[0].Attributes["fingerprint_profile"]; got != "claude-code-cli" {
+		t.Errorf("expected fingerprint_profile=claude-code-cli, got %s", got)
 	}
 	if v, ok := auths[0].Metadata["disable_cooling"].(bool); !ok || !v {
 		t.Errorf("expected disable_cooling=true, got %v", auths[0].Metadata["disable_cooling"])
@@ -312,7 +316,7 @@ func TestConfigSynthesizer_CodexKeys(t *testing.T) {
 					ProxyURL:       "http://proxy.local",
 					Websockets:     true,
 					AlphaSearch:    true,
-					DisableCooling: true,
+					DisableCooling: boolPointer(true),
 				},
 			},
 		},
@@ -359,7 +363,7 @@ func TestConfigSynthesizer_XAIKeys(t *testing.T) {
 				ProxyURL:       "http://proxy.local",
 				Websockets:     true,
 				AlphaSearch:    true,
-				DisableCooling: true,
+				DisableCooling: boolPointer(true),
 				Headers:        map[string]string{"X-Custom": "value"},
 				Models:         []config.XAIModel{{Name: "grok-4.5", Alias: "grok-latest"}},
 			}},
@@ -446,7 +450,7 @@ func TestConfigSynthesizer_OpenAICompat(t *testing.T) {
 				{
 					Name:           "CustomProvider",
 					BaseURL:        "https://custom.api.com",
-					DisableCooling: true,
+					DisableCooling: boolPointer(true),
 					APIKeyEntries: []config.OpenAICompatibilityAPIKey{
 						{APIKey: "key-1"},
 						{APIKey: "key-2"},
