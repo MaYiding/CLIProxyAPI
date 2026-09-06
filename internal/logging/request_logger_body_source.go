@@ -173,27 +173,27 @@ func (s *FileBodySource) WriteTo(w io.Writer) (int64, error) {
 	}
 	paths := s.Paths()
 	wrote := false
-	var total int64
+	var totalWritten int64
 	for _, path := range paths {
 		file, errOpen := os.Open(path)
 		if errOpen != nil {
 			if os.IsNotExist(errOpen) {
 				continue
 			}
-			return total, errOpen
+			return totalWritten, errOpen
 		}
 		if wrote {
-			written, errWrite := io.WriteString(w, "\n")
-			total += int64(written)
+			n, errWrite := io.WriteString(w, "\n")
+			totalWritten += int64(n)
 			if errWrite != nil {
 				if errClose := file.Close(); errClose != nil {
 					log.WithError(errClose).Warn("failed to close log part file")
 				}
-				return total, errWrite
+				return totalWritten, errWrite
 			}
 		}
-		written, errCopy := io.Copy(w, file)
-		total += written
+		n, errCopy := io.Copy(w, file)
+		totalWritten += n
 		if errClose := file.Close(); errClose != nil {
 			log.WithError(errClose).Warn("failed to close log part file")
 			if errCopy == nil {
@@ -201,11 +201,11 @@ func (s *FileBodySource) WriteTo(w io.Writer) (int64, error) {
 			}
 		}
 		if errCopy != nil {
-			return total, errCopy
+			return totalWritten, errCopy
 		}
 		wrote = true
 	}
-	return total, nil
+	return totalWritten, nil
 }
 
 // Bytes merges all ordered parts into memory.
