@@ -106,12 +106,18 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		quotaSupportedProviders = host.QuotaSupportedProvidersSet(c.Request.Context())
 	}
 	auths := h.authManager.List()
+	observedAt := time.Now().UTC()
+	cooldownsKnown := !h.authManager.HomeEnabled()
 	files := make([]gin.H, 0, len(auths))
 	for _, auth := range auths {
 		if !matchesAuthFileLookup(auth, nameFilter, authIndexFilter) {
 			continue
 		}
 		if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
+			entry["cooldowns"] = nil
+			if cooldownsKnown {
+				entry["cooldowns"] = coreauth.CooldownSnapshotForAuth(auth, observedAt)
+			}
 			files = append(files, entry)
 		}
 	}
@@ -120,7 +126,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		nameJ, _ := files[j]["name"].(string)
 		return strings.ToLower(nameI) < strings.ToLower(nameJ)
 	})
-	c.JSON(200, gin.H{"files": files})
+	c.JSON(200, gin.H{"observed_at": observedAt, "files": files})
 }
 
 func lockedAuthIndex(auth *coreauth.Auth) string {
@@ -222,6 +228,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 
 // List auth files from disk when the auth manager is unavailable.
 func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
+	observedAt := time.Now().UTC()
 	nameFilter := strings.TrimSpace(c.Query("name"))
 	authIndexFilter := strings.TrimSpace(c.Query("auth_index"))
 	entries, err := os.ReadDir(h.cfg.AuthDir)
@@ -231,7 +238,7 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 	}
 	files := make([]gin.H, 0)
 	if authIndexFilter != "" {
-		c.JSON(200, gin.H{"files": files})
+		c.JSON(200, gin.H{"observed_at": observedAt, "files": files})
 		return
 	}
 	for _, e := range entries {
@@ -246,7 +253,7 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 			continue
 		}
 		if info, errInfo := e.Info(); errInfo == nil {
-			fileData := gin.H{"name": name, "size": info.Size(), "modtime": info.ModTime()}
+			fileData := gin.H{"name": name, "size": info.Size(), "modtime": info.ModTime(), "cooldowns": nil}
 
 			// Read file to get type field
 			full := filepath.Join(h.cfg.AuthDir, name)
@@ -307,7 +314,7 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 			files = append(files, fileData)
 		}
 	}
-	c.JSON(200, gin.H{"files": files})
+	c.JSON(200, gin.H{"observed_at": observedAt, "files": files})
 }
 
 func (h *Handler) buildAuthFileEntry(auth *coreauth.Auth, quotaSupported ...map[string]struct{}) gin.H {
