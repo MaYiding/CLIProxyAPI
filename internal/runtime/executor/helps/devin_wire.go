@@ -982,7 +982,11 @@ func ParseDevinTrailerError(payload []byte) (statusCode int, err error) {
 	case "unauthenticated":
 		httpCode = http.StatusUnauthorized
 	case "permission_denied":
-		httpCode = http.StatusForbidden
+		if strings.Contains(msgLower, "high demand") {
+			httpCode = http.StatusTooManyRequests
+		} else {
+			httpCode = http.StatusForbidden
+		}
 	case "resource_exhausted":
 		httpCode = http.StatusTooManyRequests
 	case "unavailable":

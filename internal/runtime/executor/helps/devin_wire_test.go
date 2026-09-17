@@ -291,6 +291,43 @@ func TestParseDevinTrailerError(t *testing.T) {
 	if code != 504 {
 		t.Errorf("status code = %d, want 504 for deadline_exceeded", code)
 	}
+
+	// Case: transient high-demand capacity error encoded as permission_denied → 429
+	highDemandJSON := []byte(`{"error":{"code":"permission_denied","message":"The model is currently in high demand, please try again later (trace ID: 00000000000000000000000000000000)"}}`)
+	code, err = ParseDevinTrailerError(highDemandJSON)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if code != 429 {
+		t.Errorf("status code = %d, want 429 for transient high-demand permission_denied", code)
+	}
+
+	// Case: genuine permission error remains 403
+	genuinePermJSON := []byte(`{"error":{"code":"permission_denied","message":"model access is not allowed for this account"}}`)
+	code, err = ParseDevinTrailerError(genuinePermJSON)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if code != 403 {
+		t.Errorf("status code = %d, want 403 for genuine permission_denied", code)
+	}
+
+	// Case: resource_exhausted remains 429 (unchanged behavior)
+	resourceExhaustedJSON := []byte(`{"error":{"code":"resource_exhausted","message":"rate limit exceeded"}}`)
+	code, err = ParseDevinTrailerError(resourceExhaustedJSON)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if code != 429 {
+		t.Errorf("status code = %d, want 429 for resource_exhausted", code)
+	}
+
+	// Case: high-demand matching is case-insensitive
+	highDemandLowerJSON := []byte(`{"error":{"code":"permission_denied","message":"HIGH DEMAND: please retry"}}`)
+	code, err = ParseDevinTrailerError(highDemandLowerJSON)
+	if code != 429 {
+		t.Errorf("status code = %d, want 429 for case-insensitive high demand match", code)
+	}
 }
 
 func TestUTF8SplitBuffer(t *testing.T) {
