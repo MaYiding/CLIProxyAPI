@@ -1,12 +1,14 @@
 package responses
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	sigcompat "github.com/router-for-me/CLIProxyAPI/v7/internal/signature"
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
 	"github.com/tidwall/gjson"
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -1010,13 +1012,108 @@ func TestConvertOpenAIResponsesRequestToAntigravity_CrossProviderCapabilityIsola
 
 	// Antigravity dedicated request builder must not build web_search envelope
 	// by borrowing AI Studio's capability
-	if shouldBuildAntigravityResponsesWebSearchRequest(modelID, input) {
+	if shouldBuildAntigravityResponsesWebSearchRequest(modelID, input, nil) {
 		t.Fatalf("shouldBuildAntigravityResponsesWebSearchRequest should be false for Antigravity route when Antigravity model lacks search capability")
 	}
 
 	out := ConvertOpenAIResponsesRequestToAntigravity(modelID, input, false)
 	if gjson.GetBytes(out, "requestType").String() == "web_search" {
 		t.Fatalf("ConvertOpenAIResponsesRequestToAntigravity should not build web_search requestType envelope when Antigravity route lacks capability: %s", out)
+	}
+}
+
+func TestConvertOpenAIResponsesRequestToAntigravity_DoesNotBorrowNativeCapabilityFromGemini(t *testing.T) {
+	const modelID = "gemini-provider-native-capability-only"
+	webSearch := true
+	reg := registry.GetGlobalRegistry()
+	reg.RegisterClient("gemini-native-search-only", "gemini", []*registry.ModelInfo{{
+		ID:                 modelID,
+		NativeCapabilities: &registry.NativeCapabilities{WebSearch: &webSearch},
+	}})
+	t.Cleanup(func() { reg.UnregisterClient("gemini-native-search-only") })
+
+	input := []byte(`{
+		"model": "` + modelID + `",
+		"input": "Search web",
+		"tools": [{"type": "web_search"}]
+	}`)
+	out := ConvertOpenAIResponsesRequestToAntigravity(modelID, input, false)
+	if gjson.GetBytes(out, "requestType").String() == "web_search" {
+		t.Fatalf("borrowed Gemini capability for Antigravity route: %s", out)
+	}
+}
+
+func TestConvertOpenAIResponsesRequestToAntigravity_LocalWebSearchCapability(t *testing.T) {
+	trueVal, falseVal := true, false
+	for _, tc := range []struct {
+		name       string
+		capability *bool
+		probe      bool
+		wantSearch bool
+	}{
+		{name: "unknown without probe"},
+		{name: "unknown with probe", probe: true, wantSearch: true},
+		{name: "false without probe", capability: &falseVal},
+		{name: "false vetoes probe", capability: &falseVal, probe: true},
+		{name: "true still requires probe", capability: &trueVal},
+		{name: "true with probe", capability: &trueVal, probe: true, wantSearch: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const modelID = "gemini-responses-local-search"
+			const clientID = "ag-responses-local-search"
+			reg := registry.GetGlobalRegistry()
+			reg.RegisterClient(clientID, "antigravity", []*registry.ModelInfo{{
+				ID:                 modelID,
+				NativeCapabilities: &registry.NativeCapabilities{WebSearch: tc.capability},
+			}})
+			t.Cleanup(func() { reg.UnregisterClient(clientID) })
+			if tc.probe && !reg.ApplyClientModelCapabilities(clientID, reg.ClientRegistrationEpoch(clientID), func(_ string, info *registry.ModelInfo) {
+				info.SupportsWebSearch = true
+			}) {
+				t.Fatal("capability probe update was not applied")
+			}
+
+			input := []byte(`{"model":"` + modelID + `","input":"Search weather","tools":[{"type":"web_search"}]}`)
+			unknownInfo := &registry.ModelInfo{ID: modelID, NativeCapabilities: &registry.NativeCapabilities{}}
+			for name, out := range map[string][]byte{
+				"legacy": ConvertOpenAIResponsesRequestToAntigravity(modelID, input, false),
+				"unknown envelope with suffix": ConvertOpenAIResponsesRequestEnvelopeToAntigravity(context.Background(), sdktranslator.RequestEnvelope{
+					Model: modelID + "(high)", Body: input, Stream: true, ModelInfo: unknownInfo,
+				}).Body,
+			} {
+				if got := gjson.GetBytes(out, "requestType").String() == "web_search"; got != tc.wantSearch {
+					t.Fatalf("%s: web_search = %v, want %v; output=%s", name, got, tc.wantSearch, out)
+				}
+				if got := gjson.GetBytes(out, "request.tools.0.googleSearch").Exists(); got != tc.wantSearch {
+					t.Fatalf("%s: googleSearch present = %v, want %v; output=%s", name, got, tc.wantSearch, out)
+				}
+			}
+		})
+	}
+}
+
+func TestConvertOpenAIResponsesRequestToAntigravity_IgnoresOtherProviderSearchVeto(t *testing.T) {
+	const modelID = "gemini-responses-provider-search-veto"
+	webSearch := false
+	reg := registry.GetGlobalRegistry()
+	reg.RegisterClient("ag-responses-provider-search-veto", "antigravity", []*registry.ModelInfo{{
+		ID: modelID, SupportsWebSearch: true,
+	}})
+	reg.RegisterClient("gemini-responses-provider-search-veto", "gemini", []*registry.ModelInfo{{
+		ID: modelID, NativeCapabilities: &registry.NativeCapabilities{WebSearch: &webSearch},
+	}})
+	t.Cleanup(func() {
+		reg.UnregisterClient("ag-responses-provider-search-veto")
+		reg.UnregisterClient("gemini-responses-provider-search-veto")
+	})
+
+	input := []byte(`{"model":"` + modelID + `","input":"Search weather","tools":[{"type":"web_search"}]}`)
+	out := ConvertOpenAIResponsesRequestToAntigravity(modelID, input, false)
+	if gjson.GetBytes(out, "requestType").String() != "web_search" {
+		t.Fatalf("another provider disabled Antigravity search: %s", out)
+	}
+	if !gjson.GetBytes(out, "request.tools.0.googleSearch").Exists() {
+		t.Fatalf("missing Antigravity googleSearch tool: %s", out)
 	}
 }
 
@@ -1173,5 +1270,46 @@ func TestConvertOpenAIResponsesRequestToAntigravity_WebSearchToolChoiceAutoPrese
 	}
 	if parsed.Get("request.tools.0.googleSearch.enhancedContent.imageSearch.maxResultCount").Int() != 5 {
 		t.Fatalf("expected maxResultCount 5, got %d. Output: %s", parsed.Get("request.tools.0.googleSearch.enhancedContent.imageSearch.maxResultCount").Int(), out)
+	}
+}
+
+func TestConvertOpenAIResponsesRequestEnvelopeToAntigravity(t *testing.T) {
+	const modelID = "gemini-3.8-flash-high"
+	trueVal, falseVal := true, false
+	for _, tc := range []struct {
+		name            string
+		enabled         bool
+		localCapability *bool
+	}{
+		{name: "request true without local model", enabled: true},
+		{name: "request false without local model"},
+		{name: "request true overrides local false", enabled: true, localCapability: &falseVal},
+		{name: "request false overrides local true", localCapability: &trueVal},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.localCapability != nil {
+				reg := registry.GetGlobalRegistry()
+				reg.RegisterClient("ag-responses-envelope-local", "antigravity", []*registry.ModelInfo{{
+					ID:                 modelID,
+					SupportsWebSearch:  true,
+					NativeCapabilities: &registry.NativeCapabilities{WebSearch: tc.localCapability},
+				}})
+				t.Cleanup(func() { reg.UnregisterClient("ag-responses-envelope-local") })
+			}
+			input := []byte(`{"model":"` + modelID + `","input":"Search weather","tools":[{"type":"web_search"}]}`)
+			info := &registry.ModelInfo{
+				ID:                 modelID,
+				NativeCapabilities: &registry.NativeCapabilities{WebSearch: &tc.enabled},
+			}
+			out := ConvertOpenAIResponsesRequestEnvelopeToAntigravity(context.Background(), sdktranslator.RequestEnvelope{
+				Model: modelID, Body: input, ModelInfo: info,
+			})
+			if got := gjson.GetBytes(out.Body, "requestType").String() == "web_search"; got != tc.enabled {
+				t.Fatalf("web_search = %v, want %v; output=%s", got, tc.enabled, out.Body)
+			}
+			if got := gjson.GetBytes(out.Body, "request.tools.0.googleSearch").Exists(); got != tc.enabled {
+				t.Fatalf("googleSearch present = %v, want %v; output=%s", got, tc.enabled, out.Body)
+			}
+		})
 	}
 }
