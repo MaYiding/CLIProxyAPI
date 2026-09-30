@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/billing"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	coreusage "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/billing"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 )
 
 func TestGetBillingUsageReturnsFilteredReport(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/billing"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/billing"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 )
 
 type billingKeySettings struct {
